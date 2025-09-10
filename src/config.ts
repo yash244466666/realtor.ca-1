@@ -69,19 +69,13 @@ const getCurrentTimeouts = () => TIMEOUT_PRESETS[CURRENT_TIMEOUT_MODE];
 export const ScrapingConfig = {
   // Default listing URL to scrape (Page 1 uses different URL structure)
   // DEFAULT_LISTING_URL: "https://www.realtor.ca/on/mississauga/real-estate",
-  // DEFAULT_LISTING_URL: "https://www.realtor.ca/on/toronto/real-estate",
-  DEFAULT_LISTING_URL: "https://www.realtor.ca/on/markham/real-estate",
-  // DEFAULT_LISTING_URL: "https://www.realtor.ca/on/ottawa/real-estate",
-
-  // Paginated URL template for pages 2+ (discovered from manual navigation)
-  PAGINATED_URL_TEMPLATE:
-    "https://www.realtor.ca/map#view=list&CurrentPage={PAGE}&Sort=6-D&GeoIds=g30_dpz89rm7&GeoName=Toronto%2C%20ON&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=1&Currency=CAD",
+  DEFAULT_LISTING_URL: "https://www.realtor.ca/on/toronto/real-estate",
 
   // Maximum number of pages to scrape
-  MAX_PAGES: 100,
+  MAX_PAGES: 10,
 
   // Maximum number of properties to scrape
-  MAX_PROPERTIES: 500,
+  MAX_PROPERTIES: 50,
 
   // Default limit for single page scraping
   DEFAULT_SINGLE_PAGE_LIMIT: 50,
@@ -134,7 +128,7 @@ export const ScrapingConfig = {
 
   // Memory and performance settings
   USE_DYNAMIC_UPDATES: true,
-  MEMORY_MODE: "efficient",
+  MEMORY_MODE: "standard", // Options: "standard", "efficient", "ultra", "streaming", "ultra-streaming"
 };
 
 // ============ HELPER FUNCTIONS ============

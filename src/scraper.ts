@@ -278,7 +278,7 @@ export class RealtorCaScraper {
         DATE: this.getCurrentDate(),
         ADDRESS: await this.extractAddress(),
         CITY: await this.extractCity(),
-        STATE: "Ontario", // Always Ontario for realtor.ca
+        STATE: "ONTARIO", // Always Ontario for realtor.ca
         POSTAL: await this.extractPostalCode(),
         AGENT: await this.extractAgent(),
         BROKER: await this.extractBroker(),
@@ -307,35 +307,53 @@ export class RealtorCaScraper {
 
     try {
       const address = await this.page.evaluate(() => {
-        // Try multiple selectors for address
+        // First try to extract from document title (most reliable)
+        if (document.title) {
+          const titleMatch = document.title.match(/For sale:\s*(.+?),\s*/);
+          if (titleMatch && titleMatch[1]) {
+            return titleMatch[1].trim();
+          }
+        }
+
+        // Try meta description
+        const ogDescription = document.querySelector(
+          'meta[property="og:description"]'
+        );
+        if (ogDescription) {
+          const content = ogDescription.getAttribute("content");
+          if (content) {
+            const match = content.match(/(.+?),\s*/);
+            if (match && match[1]) {
+              return match[1].trim();
+            }
+          }
+        }
+
+        // Fallback to original method
         const selectors = [
           'h1[data-testid="listing-address"]',
           ".listingAddress h1",
-          'h1:contains("Address")',
+          "h1.listingAddress",
           ".property-address",
           ".listing-address",
+          'h1[class*="address"]',
+          ".listing-details h1",
+          ".property-info h1",
+          "h1",
         ];
 
         for (const selector of selectors) {
           const element = document.querySelector(selector);
-          if (element && element.textContent) {
-            return element.textContent.trim().toUpperCase();
-          }
-        }
-
-        // Fallback: look for any h1 that looks like an address
-        const h1Elements = document.querySelectorAll("h1");
-        for (let i = 0; i < h1Elements.length; i++) {
-          const h1 = h1Elements[i];
-          const text = h1.textContent?.trim();
-          if (
-            text &&
-            (text.includes("STREET") ||
-              text.includes("ROAD") ||
-              text.includes("AVENUE") ||
-              text.includes("DRIVE"))
-          ) {
-            return text.toUpperCase();
+          if (element && element.textContent && element.textContent.trim()) {
+            const text = element.textContent.trim();
+            if (
+              text.match(/\d+/) ||
+              text.match(
+                /\b(street|st|avenue|ave|road|rd|drive|dr|lane|ln|way|circle|cir|court|ct)\b/i
+              )
+            ) {
+              return text;
+            }
           }
         }
 
@@ -344,7 +362,7 @@ export class RealtorCaScraper {
 
       return address || "N/A";
     } catch (error) {
-      console.log("⚠️ Error extracting address:", error);
+      console.log(`⚠️ Error extracting address:`, error);
       return "N/A";
     }
   }
@@ -354,7 +372,40 @@ export class RealtorCaScraper {
 
     try {
       const city = await this.page.evaluate(() => {
-        // Try multiple selectors for city
+        // Extract from document title (most reliable)
+        if (document.title) {
+          const titleMatch = document.title.match(
+            /For sale:\s*.+?,\s*(.+?),\s*/
+          );
+          if (titleMatch && titleMatch[1]) {
+            return titleMatch[1].trim();
+          }
+        }
+
+        // Try meta description
+        const ogDescription = document.querySelector(
+          'meta[property="og:description"]'
+        );
+        if (ogDescription) {
+          const content = ogDescription.getAttribute("content");
+          if (content) {
+            const match = content.match(/.+?,\s*(.+?),\s*/);
+            if (match && match[1]) {
+              return match[1].trim();
+            }
+          }
+        }
+
+        // Try data layer
+        if ((window as any).dataLayer) {
+          for (const item of (window as any).dataLayer) {
+            if (item.property && item.property.city) {
+              return item.property.city;
+            }
+          }
+        }
+
+        // Fallback to original method
         const selectors = [
           '[data-testid="listing-city"]',
           ".listingCity",
@@ -396,13 +447,34 @@ export class RealtorCaScraper {
 
     try {
       const postalCode = await this.page.evaluate(() => {
+        // Extract from document title (most reliable)
+        if (document.title) {
+          const titleMatch = document.title.match(/([A-Z]\d[A-Z]\s?\d[A-Z]\d)/);
+          if (titleMatch && titleMatch[1]) {
+            return titleMatch[1].replace(/\s/g, "").toUpperCase();
+          }
+        }
+
+        // Try meta description
+        const ogDescription = document.querySelector(
+          'meta[property="og:description"]'
+        );
+        if (ogDescription) {
+          const content = ogDescription.getAttribute("content");
+          if (content) {
+            const match = content.match(/([A-Z]\d[A-Z]\s?\d[A-Z]\d)/);
+            if (match && match[1]) {
+              return match[1].replace(/\s/g, "").toUpperCase();
+            }
+          }
+        }
+
         // Canadian postal code pattern: A1A 1A1
         const postalCodeRegex = /[A-Z]\d[A-Z]\s?\d[A-Z]\d/g;
 
         // Search in various places
         const searchAreas = [
           document.body.textContent || "",
-          document.title,
           document
             .querySelector('meta[property="og:description"]')
             ?.getAttribute("content") || "",
@@ -430,6 +502,37 @@ export class RealtorCaScraper {
 
     try {
       const agent = await this.page.evaluate(() => {
+        // Look for agent name in specific containers
+        const agentNameElements = document.querySelectorAll(".realtorCardName");
+        for (let i = 0; i < agentNameElements.length; i++) {
+          const element = agentNameElements[i];
+          const text = element.textContent?.trim();
+          if (text && text.length > 0 && text.length < 50) {
+            return text.toUpperCase();
+          }
+        }
+
+        // Look for agent in contact sections
+        const possibleElements = document.querySelectorAll("*");
+        for (let i = 0; i < possibleElements.length; i++) {
+          const element = possibleElements[i];
+          const text = element.textContent?.trim() || "";
+          const className = element.className || "";
+
+          // Check if this element contains only a person's name (short text, likely a name)
+          if (
+            (className.includes("agent") || className.includes("realtor")) &&
+            text.length > 2 &&
+            text.length < 30 &&
+            text.match(/^[A-Z\s]+$/) &&
+            !text.includes("HOMELIFE") &&
+            !text.includes("REALTY") &&
+            !text.includes("INC")
+          ) {
+            return text.toUpperCase();
+          }
+        }
+
         // Try multiple selectors for agent name
         const selectors = [
           '[data-testid="agent-name"]',
@@ -468,6 +571,28 @@ export class RealtorCaScraper {
 
     try {
       const broker = await this.page.evaluate(() => {
+        // Look for office/brokerage name in specific containers
+        const officeNameElements = document.querySelectorAll(".officeCardName");
+        for (let i = 0; i < officeNameElements.length; i++) {
+          const element = officeNameElements[i];
+          const text = element.textContent?.trim();
+          if (text && text.length > 5) {
+            return text.toUpperCase();
+          }
+        }
+
+        // Look for brokerage info in listing card office names
+        const listingOfficeElements = document.querySelectorAll(
+          ".listingCardOfficeName"
+        );
+        for (let i = 0; i < listingOfficeElements.length; i++) {
+          const element = listingOfficeElements[i];
+          const text = element.textContent?.trim();
+          if (text && text.includes("BROKERAGE")) {
+            return text.toUpperCase();
+          }
+        }
+
         // Try multiple selectors for broker/brokerage
         const selectors = [
           '[data-testid="brokerage-name"]',
@@ -508,6 +633,16 @@ export class RealtorCaScraper {
 
     try {
       const price = await this.page.evaluate(() => {
+        // Try to extract from Google Analytics dataLayer first (most reliable)
+        if ((window as any).dataLayer) {
+          for (const item of (window as any).dataLayer) {
+            if (item.property && item.property.price) {
+              const priceValue = parseFloat(item.property.price);
+              return "$" + priceValue.toLocaleString();
+            }
+          }
+        }
+
         // Try multiple selectors for price
         const selectors = [
           '[data-testid="listing-price"]',
@@ -536,7 +671,7 @@ export class RealtorCaScraper {
             parseFloat(p.replace(/[$,]/g, ""))
           );
           const maxPrice = Math.max(...prices);
-          return `$${maxPrice.toLocaleString()}.00`;
+          return `$${maxPrice.toLocaleString()}`;
         }
 
         return "N/A";
@@ -554,24 +689,57 @@ export class RealtorCaScraper {
 
     try {
       const latitude = await this.page.evaluate(() => {
-        // Try to find latitude in various places
-        const searchAreas = [
-          document.body.textContent || "",
-          JSON.stringify(window),
-        ];
+        // Try to find latitude in script tags or data attributes
+        const scripts = document.querySelectorAll("script");
+        for (let i = 0; i < scripts.length; i++) {
+          const script = scripts[i];
+          const content = script.textContent || "";
 
-        for (const area of searchAreas) {
-          // Look for latitude patterns
-          const latMatch = area.match(/latitude['":\s]*(-?\d+\.\d+)/i);
-          if (latMatch) {
-            return latMatch[1];
+          // Look for coordinate patterns (more specific for Toronto area)
+          const coordMatch = content.match(/(-?\d{2}\.\d{6,})/g);
+          if (coordMatch && coordMatch.length >= 2) {
+            const lat = parseFloat(coordMatch[0]);
+            // Toronto area latitude range
+            if (lat >= 43 && lat <= 44) {
+              return coordMatch[0];
+            }
           }
 
-          // Look for coordinate patterns
-          const coordMatch = area.match(/(-?\d{2}\.\d{6,})/g);
-          if (coordMatch && coordMatch.length >= 2) {
-            // First coordinate is typically latitude
-            return coordMatch[0];
+          // Look for latitude patterns in JSON or JavaScript
+          const latMatch = content.match(
+            /(?:latitude|lat)['":\s]*(-?\d+\.\d+)/i
+          );
+          if (latMatch && latMatch[1]) {
+            const lat = parseFloat(latMatch[1]);
+            // Validate latitude range (-90 to 90) and Toronto area
+            if (lat >= 43 && lat <= 44) {
+              return latMatch[1];
+            }
+          }
+        }
+
+        // Try meta tags
+        const metaTags = document.querySelectorAll(
+          'meta[name*="latitude"], meta[property*="latitude"]'
+        );
+        for (let i = 0; i < metaTags.length; i++) {
+          const meta = metaTags[i];
+          const content = meta.getAttribute("content");
+          if (content && content.match(/^-?\d+\.\d+$/)) {
+            return content;
+          }
+        }
+
+        // Try data attributes
+        const elements = document.querySelectorAll(
+          "[data-lat], [data-latitude]"
+        );
+        for (let i = 0; i < elements.length; i++) {
+          const el = elements[i];
+          const lat =
+            el.getAttribute("data-lat") || el.getAttribute("data-latitude");
+          if (lat && lat.match(/^-?\d+\.\d+$/)) {
+            return lat;
           }
         }
 
@@ -590,24 +758,59 @@ export class RealtorCaScraper {
 
     try {
       const longitude = await this.page.evaluate(() => {
-        // Try to find longitude in various places
-        const searchAreas = [
-          document.body.textContent || "",
-          JSON.stringify(window),
-        ];
+        // Try to find longitude in script tags or data attributes
+        const scripts = document.querySelectorAll("script");
+        for (let i = 0; i < scripts.length; i++) {
+          const script = scripts[i];
+          const content = script.textContent || "";
 
-        for (const area of searchAreas) {
-          // Look for longitude patterns
-          const lngMatch = area.match(/longitude['":\s]*(-?\d+\.\d+)/i);
-          if (lngMatch) {
-            return lngMatch[1];
+          // Look for coordinate patterns (longitude is typically the second coordinate)
+          const coordMatch = content.match(/(-?\d{2,3}\.\d{6,})/g);
+          if (coordMatch && coordMatch.length >= 2) {
+            const lng = parseFloat(coordMatch[1]);
+            // Toronto area longitude range
+            if (lng >= -80 && lng <= -79) {
+              return coordMatch[1];
+            }
           }
 
-          // Look for coordinate patterns
-          const coordMatch = area.match(/(-?\d{2}\.\d{6,})/g);
-          if (coordMatch && coordMatch.length >= 2) {
-            // Second coordinate is typically longitude
-            return coordMatch[1];
+          // Look for longitude patterns in JSON or JavaScript
+          const lngMatch = content.match(
+            /(?:longitude|lng|lon)['":\s]*(-?\d+\.\d+)/i
+          );
+          if (lngMatch && lngMatch[1]) {
+            const lng = parseFloat(lngMatch[1]);
+            // Validate longitude range (-180 to 180) and Toronto area
+            if (lng >= -80 && lng <= -79) {
+              return lngMatch[1];
+            }
+          }
+        }
+
+        // Try meta tags
+        const metaTags = document.querySelectorAll(
+          'meta[name*="longitude"], meta[property*="longitude"]'
+        );
+        for (let i = 0; i < metaTags.length; i++) {
+          const meta = metaTags[i];
+          const content = meta.getAttribute("content");
+          if (content && content.match(/^-?\d+\.\d+$/)) {
+            return content;
+          }
+        }
+
+        // Try data attributes
+        const elements = document.querySelectorAll(
+          "[data-lng], [data-longitude], [data-lon]"
+        );
+        for (let i = 0; i < elements.length; i++) {
+          const el = elements[i];
+          const lng =
+            el.getAttribute("data-lng") ||
+            el.getAttribute("data-longitude") ||
+            el.getAttribute("data-lon");
+          if (lng && lng.match(/^-?\d+\.\d+$/)) {
+            return lng;
           }
         }
 
@@ -652,6 +855,125 @@ export class RealtorCaScraper {
       console.log(`⚠️ Failed to click ${elementName}: ${error}`);
       return false;
     }
+  }
+
+  /**
+   * 🚀 STREAMING PROPERTY SCRAPING
+   * Extract URLs from API and immediately process each property as URLs are discovered.
+   * This approach significantly improves performance by parallelizing URL extraction and property scraping.
+   */
+  async streamPropertyScraping(
+    maxPages: number,
+    maxProperties: number,
+    onPropertyFound: (
+      propertyUrl: string,
+      index: number,
+      estimatedTotal: number
+    ) => Promise<boolean>
+  ): Promise<void> {
+    if (!this.page || !this.browser) {
+      throw new Error("Scraper not initialized. Call initialize() first.");
+    }
+
+    console.log("🚀 Initializing streaming property scraper...");
+
+    // Step 1: Discover GeoId for the current city
+    const cityFinder = new CityGeoIdFinder();
+    console.log("🏙️ Discovering GeoId for streaming mode...");
+
+    const cityConfig = await cityFinder.findGeoIdForCity(
+      ScrapingConfig.DEFAULT_LISTING_URL
+    );
+
+    if (!cityConfig) {
+      throw new Error(
+        `Failed to discover GeoId for URL: ${ScrapingConfig.DEFAULT_LISTING_URL}`
+      );
+    }
+
+    console.log(
+      `✅ City configuration ready: ${cityConfig.cityName} (${cityConfig.geoId})`
+    );
+
+    // Step 2: Initialize API scraper for streaming
+    const apiScraper = new RealtorApiScraper();
+    await apiScraper.initialize(this.browser);
+    apiScraper.setCityConfig(cityConfig);
+
+    console.log(
+      "📡 Starting streaming URL extraction and property processing..."
+    );
+
+    let processedCount = 0;
+    let totalEstimated = 0;
+
+    // Step 3: Stream URLs page by page and process immediately
+    for (
+      let page = 1;
+      page <= maxPages && processedCount < maxProperties;
+      page++
+    ) {
+      console.log(`\n📖 Streaming URLs from page ${page}/${maxPages}...`);
+
+      try {
+        // Fetch URLs from current page
+        const pageResponse = await apiScraper.fetchPropertiesFromAPI(page);
+
+        // Extract total pages info on first page
+        if (page === 1) {
+          const totalPages = apiScraper.getTotalPages(pageResponse);
+          const estimatedPropertiesPerPage =
+            apiScraper.extractPropertyUrls(pageResponse).length;
+          totalEstimated = Math.min(
+            totalPages * estimatedPropertiesPerPage,
+            maxProperties
+          );
+          console.log(`📊 Estimated total properties: ${totalEstimated}`);
+        }
+
+        // Extract URLs from this page
+        const pageUrls = apiScraper.extractPropertyUrls(pageResponse);
+        console.log(`🔗 Found ${pageUrls.length} URLs on page ${page}`);
+
+        // Process each URL immediately
+        for (const propertyUrl of pageUrls) {
+          if (processedCount >= maxProperties) {
+            console.log(`🎯 Reached target of ${maxProperties} properties`);
+            return;
+          }
+
+          // Call the processing callback
+          const shouldContinue = await onPropertyFound(
+            propertyUrl,
+            processedCount,
+            totalEstimated
+          );
+
+          if (!shouldContinue) {
+            console.log("🛑 Processing stopped by callback");
+            return;
+          }
+
+          processedCount++;
+        }
+
+        // Add delay between API page requests
+        if (page < maxPages && processedCount < maxProperties) {
+          console.log(
+            `⏳ Page delay: ${TimingConfig.PAGINATION_CLICK_DELAY / 1000}s`
+          );
+          await this.page.waitForTimeout(TimingConfig.PAGINATION_CLICK_DELAY);
+        }
+      } catch (error) {
+        console.error(`❌ Error processing page ${page}:`, error);
+        console.log("💡 Continuing with next page...");
+        continue;
+      }
+    }
+
+    console.log(
+      `🎉 Streaming completed: ${processedCount} properties processed`
+    );
   }
 
   async close(): Promise<void> {

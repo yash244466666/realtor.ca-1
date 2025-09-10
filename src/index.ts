@@ -3,6 +3,8 @@ import {
   scrapeFromListingsPageWithPagination,
   scrapeFromListingsPageWithDynamicUpdates,
   scrapeFromListingsPageUltraMemoryEfficient,
+  scrapeFromListingsPageWithStreaming,
+  scrapeFromListingsPageWithUltraStreaming,
 } from "./workflow";
 import { saveToCSV, saveToJSON, generateTimestamp } from "./utils";
 import { ScrapingConfig, ConfigPresets } from "./config";
@@ -64,7 +66,64 @@ async function main() {
 
     if (USE_DYNAMIC_UPDATES && USE_PAGINATION) {
       // Choose memory mode for dynamic updates
-      if (MEMORY_MODE === "ultra") {
+      if (MEMORY_MODE === "ultra-streaming") {
+        // 🚀 ULTRA STREAMING: Real-time processing + Direct Excel export
+        console.log("🚀 Execution Mode: ULTRA STREAMING");
+        console.log(
+          "📋 Process: Real-time URL extraction → Immediate property processing → Direct Excel export"
+        );
+        console.log(
+          "📁 Output: Direct Excel file streaming (daily + master files)"
+        );
+        console.log("🧠 Memory Usage: MINIMAL (zero data accumulation)");
+        console.log(
+          "⚡ Performance: MAXIMUM efficiency - no waiting for URL collection\n"
+        );
+
+        const ultraStreamResult =
+          await scrapeFromListingsPageWithUltraStreaming(
+            PAGE,
+            HEADLESS_MODE,
+            ITEMS_TO_SCRAPE,
+            MAX_PAGES
+          );
+
+        const endTime = new Date();
+        const duration = endTime.getTime() - startTime.getTime();
+
+        console.log("\n=== ULTRA STREAMING EXECUTION SUMMARY ===");
+        console.log(`✅ Status: Completed successfully`);
+        console.log(
+          `📊 Properties Processed: ${ultraStreamResult.totalProcessed}`
+        );
+        console.log(`📁 Daily File: ${ultraStreamResult.dailyFile}`);
+        console.log(`📁 Master File: ${ultraStreamResult.masterFile}`);
+        console.log(`⏰ Start Time: ${startTime.toISOString()}`);
+        console.log(`⏰ End Time: ${endTime.toISOString()}`);
+        console.log(`⏱️  Total Duration: ${Math.round(duration / 1000)}s`);
+        console.log("🎯 All data has been streamed directly to Excel files");
+        return; // No results to save since everything was streamed
+      } else if (MEMORY_MODE === "streaming") {
+        // 🚀 STREAMING PIPELINE: Process URLs as they're discovered
+        console.log("🚀 Execution Mode: STREAMING PIPELINE");
+        console.log(
+          "📋 Process: Real-time URL extraction → Immediate property processing"
+        );
+        console.log("📁 Output: Standard JSON/CSV files after completion");
+        console.log(
+          "🧠 Memory Usage: Controlled (processes properties as URLs are found)"
+        );
+        console.log(
+          "⚡ Performance: HIGH efficiency - no waiting for full URL collection\n"
+        );
+
+        results = await scrapeFromListingsPageWithStreaming(
+          PAGE,
+          HEADLESS_MODE,
+          ITEMS_TO_SCRAPE,
+          MAX_PAGES
+        );
+      } else if (MEMORY_MODE === "ultra") {
         // 🚀 ULTRA MEMORY EFFICIENT: No data kept in memory
         console.log("🚀 Execution Mode: ULTRA Memory-Efficient Scraping");
         console.log(

@@ -472,7 +472,10 @@ export function generateDailyFilename(): string {
 }
 
 // Function to initialize dynamic Excel files
-export async function initializeDynamicExcel(): Promise<void> {
+export async function initializeDynamicExcel(): Promise<{
+  dailyFile: string;
+  masterFile: string;
+}> {
   const timestamp = generateTimestamp();
   dailyFilename = `listings-scrape-${timestamp}.xlsx`;
 
@@ -494,6 +497,11 @@ export async function initializeDynamicExcel(): Promise<void> {
   }
 
   console.log(`📅 Daily file initialized: ${dailyFilename}`);
+
+  return {
+    dailyFile: dailyFilename,
+    masterFile: masterFilename,
+  };
 }
 
 // Function to add property to both daily and master Excel files dynamically

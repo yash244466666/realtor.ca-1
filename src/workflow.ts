@@ -10,6 +10,13 @@ import {
   getMemoryStats,
 } from "./utils";
 
+// Type for the streaming callback function
+type PropertyStreamCallback = (
+  property: PropertyData,
+  index: number,
+  total?: number
+) => Promise<void>;
+
 // Function to scrape from listings page and then scrape each property
 export async function scrapeFromListingsPage(
   listingPageUrl: string = ScrapingConfig.DEFAULT_LISTING_URL,
@@ -452,6 +459,306 @@ export async function scrapeFromListingsPageUltraMemoryEfficient(
       dailyFile,
       masterFile,
     };
+  } finally {
+    await scraper.close();
+  }
+}
+
+/**
+ * 🚀 STREAMING PIPELINE: Extract URLs and scrape properties simultaneously
+ * This approach processes properties as soon as their URLs are extracted,
+ * significantly improving performance by parallelizing operations.
+ */
+export async function scrapeFromListingsPageWithStreaming(
+  listingPageUrl: string = ScrapingConfig.DEFAULT_LISTING_URL,
+  headless: boolean = ScrapingConfig.HEADLESS_MODE,
+  maxProperties: number = ScrapingConfig.MAX_PROPERTIES,
+  maxPages: number = ScrapingConfig.MAX_PAGES,
+  onPropertyScraped?: PropertyStreamCallback
+): Promise<PropertyData[]> {
+  const scraper = new RealtorCaScraper();
+  const results: PropertyData[] = [];
+  let processedCount = 0;
+  const startTime = Date.now();
+
+  try {
+    await scraper.initialize();
+
+    console.log("🚀 STREAMING PIPELINE MODE");
+    console.log("=========================");
+    console.log("⚡ Processing properties as URLs are discovered");
+    console.log(
+      `🎯 Target: ${maxProperties} properties from ${maxPages} pages`
+    );
+    console.log(`📍 Source: ${listingPageUrl}`);
+    console.log("=========================\n");
+
+    // Start streaming URL extraction and property scraping
+    await scraper.streamPropertyScraping(
+      maxPages,
+      maxProperties,
+      async (propertyUrl: string, urlIndex: number, estimatedTotal: number) => {
+        if (processedCount >= maxProperties) {
+          return false; // Stop processing
+        }
+
+        const propertyStart = Date.now();
+        const currentTime = new Date()
+          .toISOString()
+          .split("T")[1]
+          .split(".")[0];
+
+        console.log(
+          `\n[${currentTime}] 🏠 Processing Property ${
+            processedCount + 1
+          }/${maxProperties}`
+        );
+        console.log(`🔗 URL: ${propertyUrl}`);
+        console.log(
+          `📊 Progress: ${(
+            ((processedCount + 1) / maxProperties) *
+            100
+          ).toFixed(1)}%`
+        );
+
+        try {
+          // Scrape the property data
+          const propertyData = await scraper.scrapeProperty(propertyUrl);
+          const propertyTime = Date.now() - propertyStart;
+
+          // Add to results
+          results.push(propertyData);
+          processedCount++;
+
+          // Log success with details
+          console.log(
+            `✅ Property scraped in ${Math.round(propertyTime / 1000)}s`
+          );
+          console.log(`   📍 Address: ${propertyData.ADDRESS || "N/A"}`);
+          console.log(`   💰 Price: ${propertyData.PRICE || "N/A"}`);
+          console.log(`   🏙️  City: ${propertyData.CITY || "N/A"}`);
+
+          // Calculate performance metrics
+          const elapsed = Date.now() - startTime;
+          const avgTimePerProperty = elapsed / processedCount;
+          const remaining = maxProperties - processedCount;
+          const estimatedTimeLeft = Math.round(
+            (remaining * avgTimePerProperty) / 1000 / 60
+          );
+
+          if (remaining > 0) {
+            console.log(
+              `⏳ Estimated time remaining: ${estimatedTimeLeft} minutes`
+            );
+            console.log(
+              `⚡ Average speed: ${(
+                (processedCount / (elapsed / 1000)) *
+                60
+              ).toFixed(1)} properties/hour`
+            );
+          }
+
+          // Call custom callback if provided
+          if (onPropertyScraped) {
+            await onPropertyScraped(
+              propertyData,
+              processedCount,
+              maxProperties
+            );
+          }
+
+          // Rate limiting delay
+          if (processedCount < maxProperties) {
+            console.log(
+              `⏳ Rate limiting delay: ${
+                TimingConfig.PROPERTY_SCRAPING_DELAY / 1000
+              }s`
+            );
+            await new Promise((resolve) =>
+              setTimeout(resolve, TimingConfig.PROPERTY_SCRAPING_DELAY)
+            );
+          }
+
+          return true; // Continue processing
+        } catch (error) {
+          console.error(
+            `❌ Failed to scrape property ${processedCount + 1}:`,
+            error
+          );
+          console.log(`🔗 Problem URL: ${propertyUrl}`);
+          console.log(`💡 Continuing with next property...`);
+
+          // Add error placeholder
+          results.push({
+            DATE: new Date().toLocaleDateString("en-GB"),
+            ADDRESS: `SCRAPING_ERROR_${processedCount + 1}`,
+            CITY: "Error",
+            STATE: "Error",
+            POSTAL: "Error",
+            AGENT: "Error",
+            BROKER: "Error",
+            PRICE: "Error",
+            LATITUDE: "Error",
+            LONGITUDE: "Error",
+          });
+          processedCount++;
+
+          return true; // Continue despite error
+        }
+      }
+    );
+
+    const totalTime = Date.now() - startTime;
+    console.log("\n🎉 STREAMING PIPELINE COMPLETED");
+    console.log("===============================");
+    console.log(
+      `✅ Status: Successfully processed ${processedCount} properties`
+    );
+    console.log(`⏱️  Total time: ${Math.round(totalTime / 1000)}s`);
+    console.log(
+      `⚡ Average speed: ${(processedCount / (totalTime / 1000)).toFixed(
+        2
+      )} properties/second`
+    );
+    console.log(`💾 Results ready for export`);
+
+    return results;
+  } catch (error) {
+    console.error("❌ Streaming pipeline error:", error);
+    throw error;
+  } finally {
+    await scraper.close();
+  }
+}
+
+/**
+ * 🚀 ULTRA STREAMING: Memory-efficient streaming with direct Excel export
+ * Combines URL streaming with direct Excel writing for maximum efficiency
+ */
+export async function scrapeFromListingsPageWithUltraStreaming(
+  listingPageUrl: string = ScrapingConfig.DEFAULT_LISTING_URL,
+  headless: boolean = ScrapingConfig.HEADLESS_MODE,
+  maxProperties: number = ScrapingConfig.MAX_PROPERTIES,
+  maxPages: number = ScrapingConfig.MAX_PAGES
+): Promise<{ totalProcessed: number; dailyFile: string; masterFile: string }> {
+  const scraper = new RealtorCaScraper();
+  let processedCount = 0;
+  const startTime = Date.now();
+
+  try {
+    await scraper.initialize();
+
+    // Initialize Excel files for streaming
+    const { dailyFile, masterFile } = await initializeDynamicExcel();
+
+    console.log("🚀 ULTRA STREAMING MODE");
+    console.log("=======================");
+    console.log("⚡ Real-time property processing with direct Excel export");
+    console.log("🧠 Zero memory accumulation - immediate file streaming");
+    console.log(
+      `🎯 Target: ${maxProperties} properties from ${maxPages} pages`
+    );
+    console.log(`📁 Output: ${dailyFile} | ${masterFile}`);
+    console.log("=======================\n");
+
+    // Start ultra streaming
+    await scraper.streamPropertyScraping(
+      maxPages,
+      maxProperties,
+      async (propertyUrl: string, urlIndex: number, estimatedTotal: number) => {
+        if (processedCount >= maxProperties) {
+          return false;
+        }
+
+        const propertyStart = Date.now();
+        const currentTime = new Date()
+          .toISOString()
+          .split("T")[1]
+          .split(".")[0];
+
+        console.log(
+          `[${currentTime}] ⚡ Streaming Property ${
+            processedCount + 1
+          }/${maxProperties}`
+        );
+        console.log(`🔗 ${propertyUrl}`);
+
+        try {
+          // Scrape property data
+          const propertyData = await scraper.scrapeProperty(propertyUrl);
+          const propertyTime = Date.now() - propertyStart;
+
+          // Immediately stream to Excel files
+          await addPropertyToExcel(propertyData);
+          processedCount++;
+
+          console.log(
+            `✅ Streamed to Excel in ${Math.round(propertyTime / 1000)}s`
+          );
+          console.log(
+            `📊 ${propertyData.ADDRESS || "N/A"} | ${
+              propertyData.PRICE || "N/A"
+            }`
+          );
+
+          // Show progress
+          const elapsed = Date.now() - startTime;
+          const rate = ((processedCount / (elapsed / 1000)) * 60).toFixed(1);
+          console.log(
+            `⚡ Rate: ${rate} properties/hour | Progress: ${(
+              (processedCount / maxProperties) *
+              100
+            ).toFixed(1)}%`
+          );
+
+          return true;
+        } catch (error) {
+          console.error(
+            `❌ Error streaming property ${processedCount + 1}:`,
+            error
+          );
+
+          // Stream error record to Excel
+          const errorRecord = {
+            DATE: new Date().toLocaleDateString("en-GB"),
+            ADDRESS: `STREAMING_ERROR_${processedCount + 1}`,
+            CITY: "Error",
+            STATE: "Error",
+            POSTAL: "Error",
+            AGENT: "Error",
+            BROKER: "Error",
+            PRICE: "Error",
+            LATITUDE: "Error",
+            LONGITUDE: "Error",
+          };
+
+          await addPropertyToExcel(errorRecord);
+          processedCount++;
+
+          return true;
+        }
+      }
+    );
+
+    // Finalize Excel files
+    await finalizeDynamicExcel();
+
+    const totalTime = Date.now() - startTime;
+    console.log("\n🎉 ULTRA STREAMING COMPLETED");
+    console.log("============================");
+    console.log(`✅ Processed: ${processedCount} properties`);
+    console.log(`⏱️  Duration: ${Math.round(totalTime / 1000)}s`);
+    console.log(`📁 Files: ${dailyFile} | ${masterFile}`);
+    console.log(`🧠 Memory used: MINIMAL (no data accumulation)`);
+
+    return {
+      totalProcessed: processedCount,
+      dailyFile,
+      masterFile,
+    };
+  } catch (error) {
+    console.error("❌ Ultra streaming error:", error);
+    throw error;
   } finally {
     await scraper.close();
   }
