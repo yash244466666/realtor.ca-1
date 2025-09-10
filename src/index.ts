@@ -1,6 +1,8 @@
 import {
   scrapeFromListingsPage,
   scrapeFromListingsPageWithPagination,
+  scrapeFromListingsPageWithDynamicUpdates,
+  scrapeFromListingsPageUltraMemoryEfficient,
 } from "./workflow";
 import { saveToCSV, saveToJSON, generateTimestamp } from "./utils";
 import { ScrapingConfig, ConfigPresets } from "./config";
@@ -30,6 +32,8 @@ async function main() {
   const MAX_PAGES: number = config.MAX_PAGES;
   const USE_PAGINATION: boolean = config.USE_PAGINATION;
   const HEADLESS_MODE: boolean = config.HEADLESS_MODE;
+  const USE_DYNAMIC_UPDATES: boolean = config.USE_DYNAMIC_UPDATES || true; // Default to true
+  const MEMORY_MODE: string = config.MEMORY_MODE || "efficient";
 
   // Enhanced Realtor.ca Property Scraper with Configurable Settings
   // All timing and scraping parameters can be easily adjusted in config.ts
@@ -48,6 +52,7 @@ async function main() {
   console.log(
     `   👁️  Headless Mode: ${HEADLESS_MODE ? "Enabled" : "Disabled"}`
   );
+  console.log(`   🧠 Memory Mode: ${MEMORY_MODE.toUpperCase()}`);
   console.log(
     `   ⏱️  Property Delay: ${config.PROPERTY_SCRAPING_DELAY / 1000}s`
   );
@@ -57,24 +62,66 @@ async function main() {
   try {
     let results;
 
-    if (USE_PAGINATION) {
-      // Use pagination to scrape from multiple pages
-      console.log("🚀 Starting automated scraping with pagination...");
+    if (USE_DYNAMIC_UPDATES && USE_PAGINATION) {
+      // Choose memory mode for dynamic updates
+      if (MEMORY_MODE === "ultra") {
+        // 🚀 ULTRA MEMORY EFFICIENT: No data kept in memory
+        console.log(
+          "🚀 Starting ULTRA memory-efficient scraping with direct streaming..."
+        );
+        console.log(
+          "🧠 Features: Zero memory accumulation + Real-time Excel updates"
+        );
+
+        const ultraResult = await scrapeFromListingsPageUltraMemoryEfficient(
+          PAGE,
+          HEADLESS_MODE,
+          ITEMS_TO_SCRAPE,
+          MAX_PAGES
+        );
+
+        console.log(
+          `\n✅ ULTRA mode completed: ${ultraResult.totalProcessed} properties processed`
+        );
+        console.log(
+          `📊 Files: ${ultraResult.dailyFile}, ${ultraResult.masterFile}`
+        );
+        return; // No results to save since everything was streamed
+      } else {
+        // 🚀 EFFICIENT: Use temp files + limited memory
+        console.log(
+          "🚀 Starting memory-efficient scraping with dynamic Excel updates..."
+        );
+        console.log(
+          "🧠 Features: Temp file streaming + Dynamic file updates + Daily/Master file system"
+        );
+
+        results = await scrapeFromListingsPageWithDynamicUpdates(
+          PAGE,
+          HEADLESS_MODE,
+          ITEMS_TO_SCRAPE,
+          MAX_PAGES
+        );
+      }
+    } else if (USE_PAGINATION) {
+      // Standard pagination (keeps all data in memory)
+      console.log("🚀 Starting standard scraping with pagination...");
+      console.log("⚠️  WARNING: Standard mode keeps all data in memory");
 
       results = await scrapeFromListingsPageWithPagination(
-        PAGE, // URL of the listings page
-        HEADLESS_MODE, // Headless mode from config
-        ITEMS_TO_SCRAPE, // Maximum number of properties to scrape
-        MAX_PAGES // Maximum number of pages to scrape
+        PAGE,
+        HEADLESS_MODE,
+        ITEMS_TO_SCRAPE,
+        MAX_PAGES
       );
     } else {
-      // Use single page scraping (original method)
-      console.log("🚀 Starting automated scraping from single page...");
+      // Single page scraping (original method)
+      console.log("🚀 Starting single page scraping...");
 
       results = await scrapeFromListingsPage(
-        PAGE, // URL of the listings page
-        HEADLESS_MODE, // Headless mode from config
-        ITEMS_TO_SCRAPE // Maximum number of properties to scrape
+        PAGE,
+        HEADLESS_MODE,
+        ITEMS_TO_SCRAPE
       );
     }
 

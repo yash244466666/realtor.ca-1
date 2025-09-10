@@ -7,10 +7,19 @@ export const ScrapingConfig = {
   MAX_PAGES: 3,
 
   /** Maximum number of properties to scrape in total */
-  MAX_PROPERTIES: 25,
+  MAX_PROPERTIES: 10,
 
   /** Enable or disable pagination (true = multi-page, false = single page only) */
   USE_PAGINATION: true,
+
+  /** Enable dynamic Excel updates and dual file system (daily + master files) */
+  USE_DYNAMIC_UPDATES: true,
+
+  /** Memory efficiency mode: 'standard' | 'efficient' | 'ultra' */
+  MEMORY_MODE: "efficient" as "standard" | "efficient" | "ultra",
+
+  /** Maximum properties to keep in memory before flushing to temp files (efficient mode) */
+  MAX_PROPERTIES_IN_MEMORY: 50,
 
   // ============ TIMING SETTINGS ============
   /** Initial page load wait time (milliseconds) */
