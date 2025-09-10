@@ -4,10 +4,10 @@
 export const ScrapingConfig = {
   // ============ PAGINATION SETTINGS ============
   /** Maximum number of pages to scrape through */
-  MAX_PAGES: 3,
+  MAX_PAGES: 100,
 
   /** Maximum number of properties to scrape in total */
-  MAX_PROPERTIES: 10,
+  MAX_PROPERTIES: 500,
 
   /** Enable or disable pagination (true = multi-page, false = single page only) */
   USE_PAGINATION: true,
@@ -23,36 +23,66 @@ export const ScrapingConfig = {
 
   // ============ TIMING SETTINGS ============
   /** Initial page load wait time (milliseconds) */
-  INITIAL_PAGE_LOAD_DELAY: 3000,
+  INITIAL_PAGE_LOAD_DELAY: 1000 * 30, // 30 seconds (reduced from 120)
 
   /** Wait time after dismissing cookie banner (milliseconds) */
-  COOKIE_BANNER_DELAY: 1000,
+  COOKIE_BANNER_DELAY: 1000 * 3, // 3 seconds
 
   /** Delay between individual property scraping requests (milliseconds) */
-  PROPERTY_SCRAPING_DELAY: 3000,
+  PROPERTY_SCRAPING_DELAY: 1000 * 2, // 2 seconds
 
   /** Wait time after clicking pagination button (milliseconds) */
-  PAGINATION_CLICK_DELAY: 2000,
+  PAGINATION_CLICK_DELAY: 1000 * 10, // 10 seconds (increased for better loading)
 
   /** Delay before clicking pagination button (for scroll to complete) */
-  PAGINATION_SCROLL_DELAY: 500,
+  PAGINATION_SCROLL_DELAY: 1000 * 2, // 2 seconds
+
+  /** Wait time for page content to stabilize after navigation */
+  PAGE_STABILIZATION_DELAY: 1000 * 5, // 5 seconds
+
+  /** Wait time for network requests to complete */
+  NETWORK_IDLE_DELAY: 1000 * 3, // 3 seconds
 
   // ============ BROWSER SETTINGS ============
   /** Run browser in headless mode (true = hidden, false = visible) */
   HEADLESS_MODE: false,
 
   /** Browser navigation timeout (milliseconds) */
-  NAVIGATION_TIMEOUT: 60000,
+  NAVIGATION_TIMEOUT: 1000 * 90, // 90 seconds
 
   /** Cookie banner dismiss timeout (milliseconds) */
-  COOKIE_BANNER_TIMEOUT: 5000,
+  COOKIE_BANNER_TIMEOUT: 1000 * 10, // 10 seconds
 
   /** Browser slow motion delay for debugging (milliseconds) */
-  BROWSER_SLOW_MO: 500,
+  BROWSER_SLOW_MO: 1000 * 0, // 0 seconds
+
+  /** Page load strategy: 'domcontentloaded' | 'load' | 'networkidle' */
+  PAGE_LOAD_STRATEGY: "networkidle" as
+    | "domcontentloaded"
+    | "load"
+    | "networkidle",
+
+  /** Maximum wait time for elements to become available (milliseconds) */
+  ELEMENT_WAIT_TIMEOUT: 1000 * 30, // 30 seconds
+
+  /** Maximum wait time for page to load completely (milliseconds) */
+  PAGE_LOAD_WAIT_TIMEOUT: 1000 * 60, // 60 seconds
+
+  /** Enable browser cache and persistent context */
+  ENABLE_CACHE: true,
+
+  /** Persistent context directory for cache and cookies */
+  USER_DATA_DIR: "./browser-data",
+
+  /** Maximum retries for failed navigation attempts */
+  NAVIGATION_RETRIES: 3,
+
+  /** Wait time between navigation retries (milliseconds) */
+  NAVIGATION_RETRY_DELAY: 1000 * 5, // 5 seconds
 
   // ============ SCRAPING LIMITS ============
   /** Default number of properties for single page scraping */
-  DEFAULT_SINGLE_PAGE_LIMIT: 10,
+  DEFAULT_SINGLE_PAGE_LIMIT: 12,
 
   /** Maximum properties per page (realtor.ca typically shows 12) */
   PROPERTIES_PER_PAGE: 12,
@@ -76,7 +106,7 @@ export const ScrapingConfig = {
   MAX_RETRIES: 3,
 
   /** Retry delay when property scraping fails (milliseconds) */
-  RETRY_DELAY: 2000,
+  RETRY_DELAY: 1000 * 10, // 10 seconds
 };
 
 // Export individual categories for easier imports
@@ -86,6 +116,8 @@ export const TimingConfig = {
   PROPERTY_SCRAPING_DELAY: ScrapingConfig.PROPERTY_SCRAPING_DELAY,
   PAGINATION_CLICK_DELAY: ScrapingConfig.PAGINATION_CLICK_DELAY,
   PAGINATION_SCROLL_DELAY: ScrapingConfig.PAGINATION_SCROLL_DELAY,
+  PAGE_STABILIZATION_DELAY: ScrapingConfig.PAGE_STABILIZATION_DELAY,
+  NETWORK_IDLE_DELAY: ScrapingConfig.NETWORK_IDLE_DELAY,
 };
 
 export const PaginationConfig = {
@@ -102,6 +134,13 @@ export const BrowserConfig = {
   BROWSER_SLOW_MO: ScrapingConfig.BROWSER_SLOW_MO,
   VIEWPORT_WIDTH: ScrapingConfig.VIEWPORT_WIDTH,
   VIEWPORT_HEIGHT: ScrapingConfig.VIEWPORT_HEIGHT,
+  PAGE_LOAD_STRATEGY: ScrapingConfig.PAGE_LOAD_STRATEGY,
+  ELEMENT_WAIT_TIMEOUT: ScrapingConfig.ELEMENT_WAIT_TIMEOUT,
+  PAGE_LOAD_WAIT_TIMEOUT: ScrapingConfig.PAGE_LOAD_WAIT_TIMEOUT,
+  ENABLE_CACHE: ScrapingConfig.ENABLE_CACHE,
+  USER_DATA_DIR: ScrapingConfig.USER_DATA_DIR,
+  NAVIGATION_RETRIES: ScrapingConfig.NAVIGATION_RETRIES,
+  NAVIGATION_RETRY_DELAY: ScrapingConfig.NAVIGATION_RETRY_DELAY,
 };
 
 // Quick configuration presets
