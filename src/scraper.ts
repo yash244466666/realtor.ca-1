@@ -1,5 +1,13 @@
 import { chromium, Browser, Page, BrowserContext } from "playwright";
-import { ScrapingConfig, BrowserConfig, TimingConfig } from "./config";
+import {
+  ScrapingConfig,
+  BrowserConfig,
+  TimingConfig,
+  CURRENT_TIMEOUT_MODE,
+  getCurrentTimeoutSettings,
+} from "./config";
+import { RealtorApiScraper } from "./api-scraper";
+import { CityGeoIdFinder } from "./city-geoid-finder";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -18,146 +26,173 @@ export interface PropertyData {
 
 export class RealtorCaScraper {
   private browser: Browser | null = null;
-  private context: BrowserContext | null = null;
   private page: Page | null = null;
+  private context: BrowserContext | null = null;
 
-  async initialize(
-    headless: boolean = BrowserConfig.HEADLESS_MODE
-  ): Promise<void> {
-    console.log("Initializing browser with enhanced configuration...");
+  constructor() {}
 
-    // Create user data directory if it doesn't exist
-    if (
-      BrowserConfig.ENABLE_CACHE &&
-      !fs.existsSync(BrowserConfig.USER_DATA_DIR)
-    ) {
-      fs.mkdirSync(BrowserConfig.USER_DATA_DIR, { recursive: true });
-    }
+  /**
+   * Initialize the browser and navigate to the base page
+   */
+  async initialize(): Promise<void> {
+    console.log("🚀 Browser Initialization Process");
+    console.log("================================");
+    console.log(`⚙️  Timeout Mode: ${CURRENT_TIMEOUT_MODE.toUpperCase()}`);
+
+    const timeouts = getCurrentTimeoutSettings();
+    console.log(`🕐 Timing Configuration:`);
+    console.log(
+      `   Initial page load: ${
+        timeouts.settings.INITIAL_PAGE_LOAD_DELAY / 1000
+      }s`
+    );
+    console.log(
+      `   Navigation timeout: ${timeouts.settings.NAVIGATION_TIMEOUT / 1000}s`
+    );
+    console.log(
+      `   Element wait timeout: ${
+        timeouts.settings.ELEMENT_WAIT_TIMEOUT / 1000
+      }s`
+    );
+    console.log(
+      `   Property scraping delay: ${
+        timeouts.settings.PROPERTY_SCRAPING_DELAY / 1000
+      }s`
+    );
+
+    console.log("🌐 Launching browser...");
 
     this.browser = await chromium.launch({
-      headless: headless,
+      headless: BrowserConfig.HEADLESS_MODE,
       slowMo: BrowserConfig.BROWSER_SLOW_MO,
       args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--disable-gpu",
-        "--window-size=1920,1080",
-        "--enable-features=NetworkService,NetworkServiceLogging",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        "--disable-features=TranslateUI",
         "--disable-blink-features=AutomationControlled",
+        "--disable-web-security",
+        "--allow-running-insecure-content",
+        "--disable-features=VizDisplayCompositor",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
       ],
     });
 
-    // Create persistent context for caching
-    if (BrowserConfig.ENABLE_CACHE) {
-      this.context = await this.browser.newContext({
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        viewport: {
-          width: BrowserConfig.VIEWPORT_WIDTH,
-          height: BrowserConfig.VIEWPORT_HEIGHT,
-        },
-        locale: "en-US",
-        timezoneId: "America/Toronto",
-        acceptDownloads: false,
-        ignoreHTTPSErrors: true,
-        javaScriptEnabled: true,
-        permissions: [],
-        extraHTTPHeaders: {
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Accept-Encoding": "gzip, deflate, br",
-          DNT: "1",
-          Connection: "keep-alive",
-          "Upgrade-Insecure-Requests": "1",
-        },
-      });
-
-      this.page = await this.context.newPage();
-
-      // Enable caching and local storage
-      await this.context.addInitScript(() => {
-        // Override webdriver detection
-        Object.defineProperty(navigator, "webdriver", {
-          get: () => undefined,
-        });
-
-        // Override Chrome runtime
-        delete (window as any).chrome;
-      });
-    } else {
-      this.page = await this.browser.newPage();
-
-      // Set viewport
-      await this.page.setViewportSize({
+    this.context = await this.browser.newContext({
+      viewport: {
         width: BrowserConfig.VIEWPORT_WIDTH,
         height: BrowserConfig.VIEWPORT_HEIGHT,
-      });
-
-      // Set user agent
-      await this.page.setExtraHTTPHeaders({
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+      },
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      ignoreHTTPSErrors: true,
+      extraHTTPHeaders: {
         "Accept-Language": "en-US,en;q=0.9",
-      });
-    }
+      },
+    });
 
-    // Set longer timeouts for better reliability
-    this.page.setDefaultTimeout(BrowserConfig.ELEMENT_WAIT_TIMEOUT);
+    this.page = await this.context.newPage();
+
+    // Set additional navigation and timeout settings
     this.page.setDefaultNavigationTimeout(BrowserConfig.NAVIGATION_TIMEOUT);
+    this.page.setDefaultTimeout(BrowserConfig.ELEMENT_WAIT_TIMEOUT);
 
-    console.log("✅ Browser initialized successfully with enhanced settings");
+    console.log(
+      "✅ Browser initialized successfully with enhanced DOM loading settings"
+    );
   }
 
   /**
-   * Enhanced navigation with retry logic and proper waiting
+   * Extract property listing URLs using API-based pagination (primary method)
+   */
+  async extractPropertyUrls(
+    maxPages: number = ScrapingConfig.MAX_PAGES
+  ): Promise<string[]> {
+    console.log(
+      "🚀 Using API-based pagination method (DOM pagination disabled)..."
+    );
+
+    try {
+      return await this.scrapeListingUrlsViaAPI(maxPages);
+    } catch (error) {
+      console.error("❌ API-based URL extraction failed:", error);
+      throw new Error(`Failed to extract URLs via API: ${error}`);
+    }
+  }
+
+  /**
+   * Use the API scraper to get property URLs
+   */
+  private async scrapeListingUrlsViaAPI(maxPages: number): Promise<string[]> {
+    if (!this.page || !this.browser) {
+      throw new Error("Scraper not initialized. Call initialize() first.");
+    }
+
+    console.log("📡 Initializing API-based URL collection...");
+
+    // First, discover the GeoId for the current city
+    const cityFinder = new CityGeoIdFinder();
+    console.log("🏙️ Discovering GeoId for the current city...");
+
+    const cityConfig = await cityFinder.findGeoIdForCity(
+      ScrapingConfig.DEFAULT_LISTING_URL
+    );
+
+    if (!cityConfig) {
+      throw new Error(
+        `Failed to discover GeoId for URL: ${ScrapingConfig.DEFAULT_LISTING_URL}`
+      );
+    }
+
+    console.log(
+      `✅ Discovered city configuration: ${cityConfig.cityName} (${cityConfig.geoId})`
+    );
+
+    // Create API scraper instance with the discovered city config
+    const apiScraper = new RealtorApiScraper();
+    await apiScraper.initialize(this.browser);
+
+    // Set the discovered city configuration
+    apiScraper.setCityConfig(cityConfig);
+
+    // Extract URLs using the API
+    const urls = await apiScraper.scrapePropertyUrls(maxPages);
+
+    console.log(
+      `✅ API extracted ${urls.length} property URLs from ${maxPages} pages`
+    );
+    return urls;
+  }
+
+  /**
+   * Navigate to a specific URL with enhanced error handling and retries
    */
   private async navigateToPage(
     url: string,
     retries: number = BrowserConfig.NAVIGATION_RETRIES
   ): Promise<void> {
     if (!this.page) {
-      throw new Error("Scraper not initialized. Call initialize() first.");
+      throw new Error("Page not initialized");
     }
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         console.log(`🌐 Navigating to: ${url} (Attempt ${attempt}/${retries})`);
 
-        // Navigate with network idle strategy for better reliability
         await this.page.goto(url, {
           waitUntil: BrowserConfig.PAGE_LOAD_STRATEGY,
           timeout: BrowserConfig.NAVIGATION_TIMEOUT,
         });
 
-        // Wait for page to stabilize
-        await this.page.waitForTimeout(TimingConfig.PAGE_STABILIZATION_DELAY);
-
-        // Wait for network requests to settle
-        try {
-          await this.page.waitForLoadState("networkidle", {
-            timeout: BrowserConfig.PAGE_LOAD_WAIT_TIMEOUT,
-          });
-        } catch (e) {
-          console.log("⚠️ Network idle timeout reached, continuing...");
-        }
-
-        console.log("✅ Page navigation completed successfully");
+        // Enhanced DOM readiness check
+        await this.waitForDOMReady();
+        console.log(
+          "✅ Page navigation and DOM loading completed successfully"
+        );
         return;
       } catch (error) {
-        console.error(`❌ Navigation attempt ${attempt} failed:`, error);
+        console.log(`⚠️ Navigation attempt ${attempt} failed: ${error}`);
 
         if (attempt < retries) {
           console.log(
-            `⏳ Retrying in ${
+            `🔄 Retrying in ${
               BrowserConfig.NAVIGATION_RETRY_DELAY / 1000
             } seconds...`
           );
@@ -172,436 +207,35 @@ export class RealtorCaScraper {
   }
 
   /**
-   * Wait for element to be ready for interaction
+   * Enhanced DOM readiness check with multiple fallback strategies
    */
-  private async waitForElementReady(
-    selector: string,
-    timeout: number = BrowserConfig.ELEMENT_WAIT_TIMEOUT
-  ): Promise<boolean> {
-    if (!this.page) return false;
+  private async waitForDOMReady(): Promise<void> {
+    if (!this.page) return;
 
-    try {
-      // Wait for element to exist
-      await this.page.waitForSelector(selector, { timeout });
+    console.log("⏳ Waiting for DOM to be ready...");
 
-      // Wait for element to be visible and enabled
-      await this.page.waitForFunction(
-        (sel) => {
-          const element = document.querySelector(sel);
-          if (!element) return false;
+    // Essential elements to check for (in order of preference)
+    const essentialSelectors = [
+      "body",
+      "main",
+      "[data-testid]",
+      ".container",
+      "#content",
+    ];
 
-          const rect = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-
-          return (
-            rect.width > 0 &&
-            rect.height > 0 &&
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            !element.hasAttribute("disabled") &&
-            !(element as any).disabled
-          );
-        },
-        selector,
-        { timeout }
-      );
-
-      return true;
-    } catch (error) {
-      console.log(`⚠️ Element ${selector} not ready: ${error}`);
-      return false;
-    }
-  }
-
-  /**
-   * Enhanced click with retry logic and proper waiting
-   */
-  private async clickElementSafely(
-    selector: string,
-    description: string = "element",
-    maxRetries: number = 3
-  ): Promise<boolean> {
-    if (!this.page) return false;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    for (const selector of essentialSelectors) {
       try {
-        console.log(
-          `🖱️ Attempting to click ${description} (Attempt ${attempt}/${maxRetries})`
-        );
-
-        // Wait for element to be ready
-        const isReady = await this.waitForElementReady(selector);
-        if (!isReady) {
-          throw new Error(`${description} is not ready for interaction`);
-        }
-
-        // Scroll element into view
-        await this.page.evaluate((sel) => {
-          const element = document.querySelector(sel);
-          if (element) {
-            element.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
-        }, selector);
-
-        // Wait for scroll to complete
-        await this.page.waitForTimeout(1000);
-
-        // Click the element
-        await this.page.click(selector, { timeout: 5000 });
-
-        console.log(`✅ Successfully clicked ${description}`);
-        return true;
-      } catch (error) {
-        console.error(
-          `❌ Click attempt ${attempt} failed for ${description}:`,
-          error
-        );
-
-        if (attempt < maxRetries) {
-          await this.page.waitForTimeout(2000);
-        }
-      }
-    }
-
-    console.error(
-      `❌ Failed to click ${description} after ${maxRetries} attempts`
-    );
-    return false;
-  }
-
-  async scrapeListingUrls(
-    listingPageUrl: string = ScrapingConfig.DEFAULT_LISTING_URL
-  ): Promise<string[]> {
-    if (!this.page) {
-      throw new Error("Scraper not initialized. Call initialize() first.");
-    }
-
-    console.log(`🔍 Extracting property URLs from: ${listingPageUrl}`);
-
-    try {
-      // Use enhanced navigation
-      await this.navigateToPage(listingPageUrl);
-
-      // Wait for initial page load
-      await this.page.waitForTimeout(TimingConfig.INITIAL_PAGE_LOAD_DELAY);
-
-      // Try to dismiss cookie banner if it exists
-      try {
-        const cookieBannerExists = await this.waitForElementReady(
-          "#TOUdismissBtn",
-          BrowserConfig.COOKIE_BANNER_TIMEOUT
-        );
-        if (cookieBannerExists) {
-          await this.clickElementSafely(
-            "#TOUdismissBtn",
-            "cookie banner dismiss button"
-          );
-          await this.page.waitForTimeout(TimingConfig.COOKIE_BANNER_DELAY);
-        } else {
-          console.log("ℹ️ No cookie banner found or already dismissed");
-        }
-      } catch (e) {
-        console.log("ℹ️ No cookie banner found or already dismissed");
-      }
-
-      // Wait for listings to load
-      console.log("⏳ Waiting for property listings to load...");
-      try {
-        await this.page.waitForSelector('a[href*="/real-estate/"]', {
-          timeout: BrowserConfig.ELEMENT_WAIT_TIMEOUT,
+        await this.page.waitForSelector(selector, {
+          timeout: BrowserConfig.PAGE_LOAD_WAIT_TIMEOUT,
         });
+        console.log(`✅ Found essential element: ${selector}`);
+        return;
       } catch (e) {
-        console.log(
-          "⚠️ Property listings selector timeout, proceeding anyway..."
-        );
+        console.log(`⚠️ Element ${selector} not found, trying next...`);
       }
-
-      // Extract property URLs from the page
-      const propertyUrls = await this.page.evaluate(() => {
-        // Look for property listing links
-        const propertyLinks = Array.from(document.querySelectorAll("a")).filter(
-          (link: any) => {
-            const href = link.href;
-            return (
-              href &&
-              href.includes("/real-estate/") &&
-              href.includes("realtor.ca")
-            );
-          }
-        );
-
-        // Return unique URLs
-        const uniqueLinks = [
-          ...new Set(propertyLinks.map((link: any) => link.href)),
-        ];
-        return uniqueLinks;
-      });
-
-      console.log(`✅ Found ${propertyUrls.length} property URLs`);
-      return propertyUrls;
-    } catch (error) {
-      console.error("❌ Error during URL extraction:", error);
-      throw error;
-    }
-  }
-
-  async scrapeListingUrlsWithPagination(
-    listingPageUrl: string = ScrapingConfig.DEFAULT_LISTING_URL,
-    maxPages: number = ScrapingConfig.MAX_PAGES
-  ): Promise<string[]> {
-    if (!this.page) {
-      throw new Error("Scraper not initialized. Call initialize() first.");
     }
 
-    console.log(
-      `🔍 Extracting property URLs with pagination from: ${listingPageUrl}`
-    );
-
-    try {
-      // Navigate to the listings page with enhanced navigation
-      await this.navigateToPage(listingPageUrl);
-
-      // Wait for initial page load
-      await this.page.waitForTimeout(TimingConfig.INITIAL_PAGE_LOAD_DELAY);
-
-      // Try to dismiss cookie banner if it exists
-      try {
-        const cookieBannerExists = await this.waitForElementReady(
-          "#TOUdismissBtn",
-          BrowserConfig.COOKIE_BANNER_TIMEOUT
-        );
-        if (cookieBannerExists) {
-          await this.clickElementSafely(
-            "#TOUdismissBtn",
-            "cookie banner dismiss button"
-          );
-          await this.page.waitForTimeout(TimingConfig.COOKIE_BANNER_DELAY);
-        }
-      } catch (e) {
-        console.log("ℹ️ No cookie banner found or already dismissed");
-      }
-
-      console.log(`📄 Maximum pages to scrape: ${maxPages}`);
-
-      const allPropertyUrls: string[] = [];
-      let currentPage = 1;
-
-      while (currentPage <= maxPages) {
-        console.log(`\n📖 Scraping page ${currentPage}...`);
-
-        // Extract property URLs from current page
-        const pageUrls = await this.extractPropertyUrlsFromCurrentPage();
-
-        if (pageUrls.length === 0) {
-          console.log(
-            `❌ No listings found on page ${currentPage}. Stopping pagination.`
-          );
-          break;
-        }
-
-        // Add URLs to collection
-        allPropertyUrls.push(...pageUrls);
-        console.log(
-          `✅ Found ${pageUrls.length} properties on page ${currentPage}`
-        );
-
-        // Check if we can go to next page
-        if (currentPage < maxPages) {
-          const hasNextPage = await this.goToNextPage();
-          if (!hasNextPage) {
-            console.log(
-              `📄 No more pages available. Reached end at page ${currentPage}.`
-            );
-            break;
-          }
-          currentPage++;
-
-          // Wait for new page to load with enhanced waiting
-          await this.page.waitForTimeout(TimingConfig.PAGINATION_CLICK_DELAY);
-
-          // Wait for network to stabilize
-          try {
-            await this.page.waitForLoadState("networkidle", { timeout: 10000 });
-          } catch (e) {
-            console.log("⚠️ Network stabilization timeout, continuing...");
-          }
-        } else {
-          break;
-        }
-      }
-
-      // Remove duplicates
-      const uniqueUrls = [...new Set(allPropertyUrls)];
-      console.log(
-        `\n🎯 Total unique property URLs collected: ${uniqueUrls.length} from ${currentPage} pages`
-      );
-
-      return uniqueUrls;
-    } catch (error) {
-      console.error("❌ Error during paginated URL extraction:", error);
-      throw error;
-    }
-  }
-
-  private async extractPropertyUrlsFromCurrentPage(): Promise<string[]> {
-    try {
-      const propertyUrls = await this.page!.evaluate(() => {
-        // Look for property listing links
-        const propertyLinks = Array.from(document.querySelectorAll("a")).filter(
-          (link: any) => {
-            const href = link.href;
-            return (
-              href &&
-              href.includes("/real-estate/") &&
-              href.includes("realtor.ca") &&
-              !href.includes("#") // Avoid pagination links
-            );
-          }
-        );
-
-        // Return unique URLs from current page
-        const uniqueLinks = [
-          ...new Set(propertyLinks.map((link: any) => link.href)),
-        ];
-        return uniqueLinks;
-      });
-
-      return propertyUrls;
-    } catch (error) {
-      console.error("❌ Error extracting URLs from current page:", error);
-      return [];
-    }
-  }
-
-  private async goToNextPage(): Promise<boolean> {
-    try {
-      console.log("🔄 Attempting to navigate to next page...");
-
-      // Wait for any pending requests to complete
-      try {
-        await this.page!.waitForLoadState("networkidle", { timeout: 5000 });
-      } catch (e) {
-        console.log("⚠️ Network not idle, continuing with navigation...");
-      }
-
-      // Check if next button exists and is clickable with enhanced detection
-      const nextButtonInfo = await this.page!.evaluate(() => {
-        const nextButtons = document.querySelectorAll(".lnkNextResultsPage");
-
-        // Find the visible and enabled next button
-        let visibleButton: Element | null = null;
-        let buttonIndex = -1;
-
-        Array.from(nextButtons).forEach((button, index) => {
-          const rect = button.getBoundingClientRect();
-          const style = getComputedStyle(button);
-
-          // More thorough checks for button availability
-          const isVisible =
-            rect.width > 0 &&
-            rect.height > 0 &&
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            style.opacity !== "0";
-
-          const isEnabled =
-            !(button as HTMLElement).hasAttribute("disabled") &&
-            !(button as HTMLButtonElement).disabled &&
-            !button.classList.contains("disabled") &&
-            !button.hasAttribute("aria-disabled");
-
-          if (isVisible && isEnabled) {
-            visibleButton = button;
-            buttonIndex = index;
-          }
-        });
-
-        if (visibleButton && buttonIndex >= 0) {
-          // Get current page info
-          const currentPageElement = document.querySelector(
-            ".paginationCurrentPage"
-          );
-          const totalPagesElement = document.querySelector(
-            ".paginationTotalPagesNum"
-          );
-
-          return {
-            hasNext: true,
-            currentPage: currentPageElement?.textContent || "Unknown",
-            totalPages: totalPagesElement?.textContent || "Unknown",
-            buttonIndex: buttonIndex,
-          };
-        }
-
-        return { hasNext: false, buttonIndex: -1 };
-      });
-
-      if (!nextButtonInfo.hasNext) {
-        console.log("🚫 No next page button available or button is disabled");
-        return false;
-      }
-
-      console.log(
-        `📄 Current page: ${nextButtonInfo.currentPage}, Total pages: ${nextButtonInfo.totalPages}`
-      );
-
-      // Use enhanced click method for the next button
-      const nextButtonSelector = `.lnkNextResultsPage:nth-child(${
-        nextButtonInfo.buttonIndex + 1
-      })`;
-      const clickSuccess = await this.clickElementSafely(
-        nextButtonSelector,
-        "next page button"
-      );
-
-      if (!clickSuccess) {
-        console.log("❌ Failed to click next page button");
-        return false;
-      }
-
-      // Wait for navigation to complete with better detection
-      await this.page!.waitForTimeout(TimingConfig.PAGINATION_CLICK_DELAY);
-
-      // Wait for page content to load
-      try {
-        await this.page!.waitForLoadState("domcontentloaded", {
-          timeout: 15000,
-        });
-        await this.page!.waitForTimeout(TimingConfig.PAGE_STABILIZATION_DELAY);
-      } catch (e) {
-        console.log("⚠️ Page load timeout, but continuing...");
-      }
-
-      // Verify page changed by checking URL or page content
-      const currentUrl = this.page!.url();
-      const pageMatch = currentUrl.match(/CurrentPage=(\d+)/);
-
-      if (pageMatch) {
-        console.log(`✅ Successfully navigated to page ${pageMatch[1]}`);
-        return true;
-      }
-
-      // Alternative verification: check if page content has changed
-      try {
-        await this.page!.waitForFunction(
-          () => {
-            const listings = document.querySelectorAll(
-              'a[href*="/real-estate/"]'
-            );
-            return listings.length > 0;
-          },
-          { timeout: 10000 }
-        );
-        console.log("✅ Page navigation completed successfully");
-        return true;
-      } catch (e) {
-        console.log("⚠️ Could not verify page change, but proceeding...");
-        return true; // Proceed anyway as page might have loaded
-      }
-    } catch (error) {
-      console.error("❌ Error navigating to next page:", error);
-      return false;
-    }
+    console.log("⚠️ No essential elements found, but proceeding...");
   }
 
   async scrapeProperty(url: string): Promise<PropertyData> {
@@ -616,7 +250,9 @@ export class RealtorCaScraper {
       await this.navigateToPage(url);
 
       // Wait for page to load
-      await this.page.waitForTimeout(TimingConfig.INITIAL_PAGE_LOAD_DELAY);
+      await this.page.waitForTimeout(
+        getCurrentTimeoutSettings().settings.INITIAL_PAGE_LOAD_DELAY
+      );
 
       // Try to dismiss cookie banner if it exists
       try {
@@ -629,7 +265,9 @@ export class RealtorCaScraper {
             "#TOUdismissBtn",
             "cookie banner dismiss button"
           );
-          await this.page.waitForTimeout(TimingConfig.COOKIE_BANNER_DELAY);
+          await this.page.waitForTimeout(
+            getCurrentTimeoutSettings().settings.COOKIE_BANNER_DELAY
+          );
         }
       } catch (e) {
         console.log("ℹ️ No cookie banner found or already dismissed");
@@ -652,196 +290,374 @@ export class RealtorCaScraper {
       console.log("✅ Successfully scraped property data");
       return propertyData;
     } catch (error) {
-      console.error("❌ Error during scraping:", error);
+      console.error(`❌ Error scraping property ${url}:`, error);
       throw error;
     }
   }
 
   private getCurrentDate(): string {
-    // Format: DD-MM-YYYY as shown in your CSV
     const now = new Date();
-    const day = String(now.getDate()).padStart(2, "0");
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const year = now.getFullYear();
-    return `${day}-${month}-${year}`;
+    return `${String(now.getDate()).padStart(2, "0")}-${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}-${now.getFullYear()}`;
   }
 
   private async extractAddress(): Promise<string> {
+    if (!this.page) return "N/A";
+
     try {
-      const address = await this.page?.textContent("#listingAddressTitle");
-      return address?.trim() || "N/A";
-    } catch (e) {
+      const address = await this.page.evaluate(() => {
+        // Try multiple selectors for address
+        const selectors = [
+          'h1[data-testid="listing-address"]',
+          ".listingAddress h1",
+          'h1:contains("Address")',
+          ".property-address",
+          ".listing-address",
+        ];
+
+        for (const selector of selectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent) {
+            return element.textContent.trim().toUpperCase();
+          }
+        }
+
+        // Fallback: look for any h1 that looks like an address
+        const h1Elements = document.querySelectorAll("h1");
+        for (let i = 0; i < h1Elements.length; i++) {
+          const h1 = h1Elements[i];
+          const text = h1.textContent?.trim();
+          if (
+            text &&
+            (text.includes("STREET") ||
+              text.includes("ROAD") ||
+              text.includes("AVENUE") ||
+              text.includes("DRIVE"))
+          ) {
+            return text.toUpperCase();
+          }
+        }
+
+        return "N/A";
+      });
+
+      return address || "N/A";
+    } catch (error) {
+      console.log("⚠️ Error extracting address:", error);
       return "N/A";
     }
   }
 
   private async extractCity(): Promise<string> {
+    if (!this.page) return "N/A";
+
     try {
-      const pageText = (await this.page?.textContent("body")) || "";
-      // Look for pattern: "Toronto (Black Creek), Ontario M3N2Y4"
-      const cityMatch = pageText.match(/([^,]+\([^)]+\)),\s*Ontario/);
-      return cityMatch ? cityMatch[1].trim() : "N/A";
-    } catch (e) {
+      const city = await this.page.evaluate(() => {
+        // Try multiple selectors for city
+        const selectors = [
+          '[data-testid="listing-city"]',
+          ".listingCity",
+          ".property-city",
+          ".listing-location",
+        ];
+
+        for (const selector of selectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent) {
+            return element.textContent.trim();
+          }
+        }
+
+        // Fallback: extract from breadcrumb or URL
+        const breadcrumbs = document.querySelectorAll(
+          ".breadcrumb span, .breadcrumb a"
+        );
+        for (let i = 0; i < breadcrumbs.length; i++) {
+          const breadcrumb = breadcrumbs[i];
+          const text = breadcrumb.textContent?.trim();
+          if (text && text.includes("(") && text.includes(")")) {
+            return text;
+          }
+        }
+
+        return "N/A";
+      });
+
+      return city || "N/A";
+    } catch (error) {
+      console.log("⚠️ Error extracting city:", error);
       return "N/A";
     }
   }
 
   private async extractPostalCode(): Promise<string> {
+    if (!this.page) return "N/A";
+
     try {
-      const pageText = (await this.page?.textContent("body")) || "";
-      // Look for the address line that contains the postal code
-      const addressMatch = pageText.match(
-        /Toronto\s*\([^)]+\),\s*Ontario\s+([A-Z]\d[A-Z]\s?\d[A-Z]\d)/
-      );
-      if (addressMatch) {
-        return addressMatch[1].replace(/\s/g, "");
-      }
+      const postalCode = await this.page.evaluate(() => {
+        // Canadian postal code pattern: A1A 1A1
+        const postalCodeRegex = /[A-Z]\d[A-Z]\s?\d[A-Z]\d/g;
 
-      // Fallback: look for any Canadian postal code pattern and pick the most common one
-      const postalMatches = pageText.match(/[A-Z]\d[A-Z]\s?\d[A-Z]\d/g);
-      if (postalMatches && postalMatches.length > 0) {
-        // Count occurrences and pick the most frequent (likely the property postal code)
-        const counts: { [key: string]: number } = {};
-        postalMatches.forEach((postal) => {
-          const clean = postal.replace(/\s/g, "");
-          counts[clean] = (counts[clean] || 0) + 1;
-        });
+        // Search in various places
+        const searchAreas = [
+          document.body.textContent || "",
+          document.title,
+          document
+            .querySelector('meta[property="og:description"]')
+            ?.getAttribute("content") || "",
+        ];
 
-        // Find the most frequent postal code that's not obviously wrong (not F2F2F2, E6E6E6, etc.)
-        const validPostals = Object.entries(counts)
-          .filter(([postal]) => !postal.match(/^[EF]\d[EF]/)) // Filter out CSS color-like patterns
-          .sort((a, b) => b[1] - a[1]);
-
-        if (validPostals.length > 0) {
-          return validPostals[0][0];
+        for (const area of searchAreas) {
+          const matches = area.match(postalCodeRegex);
+          if (matches && matches.length > 0) {
+            return matches[0].replace(/\s/g, "").toUpperCase();
+          }
         }
-      }
 
-      return "N/A";
-    } catch (e) {
+        return "N/A";
+      });
+
+      return postalCode || "N/A";
+    } catch (error) {
+      console.log("⚠️ Error extracting postal code:", error);
       return "N/A";
     }
   }
 
   private async extractAgent(): Promise<string> {
+    if (!this.page) return "N/A";
+
     try {
-      const pageText = (await this.page?.textContent("body")) || "";
+      const agent = await this.page.evaluate(() => {
+        // Try multiple selectors for agent name
+        const selectors = [
+          '[data-testid="agent-name"]',
+          ".agent-name",
+          ".listing-agent",
+          ".contact-agent .name",
+          ".agent-info .name",
+        ];
 
-      // Look for agent name pattern - typically appears before "Salesperson"
-      const agentMatch = pageText.match(/([A-Z][A-Z\s]+)\s*Salesperson/);
-      if (agentMatch) {
-        return agentMatch[1].trim();
-      }
+        for (const selector of selectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent) {
+            return element.textContent.trim().toUpperCase();
+          }
+        }
 
-      // Alternative pattern - look for name before phone number
-      const altAgentMatch = pageText.match(
-        /(\b[A-Z][A-Z\s]+)\s*\d{3}-\d{3}-\d{4}/
-      );
-      if (altAgentMatch) {
-        return altAgentMatch[1].trim();
-      }
+        // Fallback: look for patterns in text
+        const bodyText = document.body.textContent || "";
+        const agentMatch = bodyText.match(/Agent:?\s*([A-Z\s]+)/i);
+        if (agentMatch) {
+          return agentMatch[1].trim().toUpperCase();
+        }
 
-      return "N/A";
-    } catch (e) {
+        return "N/A";
+      });
+
+      return agent || "N/A";
+    } catch (error) {
+      console.log("⚠️ Error extracting agent:", error);
       return "N/A";
     }
   }
 
   private async extractBroker(): Promise<string> {
+    if (!this.page) return "N/A";
+
     try {
-      const pageText = (await this.page?.textContent("body")) || "";
+      const broker = await this.page.evaluate(() => {
+        // Try multiple selectors for broker/brokerage
+        const selectors = [
+          '[data-testid="brokerage-name"]',
+          ".brokerage-name",
+          ".broker-name",
+          ".listing-brokerage",
+          ".contact-info .brokerage",
+        ];
 
-      // Look for brokerage name pattern
-      const brokerMatch = pageText.match(
-        /([A-Z][A-Z\s&]+(?:REALTY|REAL ESTATE|BROKERAGE))/
-      );
-      if (brokerMatch) {
-        return brokerMatch[1].trim();
-      }
+        for (const selector of selectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent) {
+            return element.textContent.trim().toUpperCase();
+          }
+        }
 
-      // Look for "Brokerage" label
-      const brokerLabelMatch = pageText.match(/Brokerage\s*([^\n]+)/);
-      if (brokerLabelMatch) {
-        return brokerLabelMatch[1].trim();
-      }
+        // Fallback: look for patterns in text
+        const bodyText = document.body.textContent || "";
+        const brokerMatch = bodyText.match(
+          /(?:Broker|Brokerage|Office):?\s*([A-Z\s\d\-,]+)/i
+        );
+        if (brokerMatch) {
+          return brokerMatch[1].trim().toUpperCase();
+        }
 
-      return "N/A";
-    } catch (e) {
+        return "N/A";
+      });
+
+      return broker || "N/A";
+    } catch (error) {
+      console.log("⚠️ Error extracting broker:", error);
       return "N/A";
     }
   }
 
   private async extractPrice(): Promise<string> {
+    if (!this.page) return "N/A";
+
     try {
-      const pageText = (await this.page?.textContent("body")) || "";
-      const priceMatch = pageText.match(/\$[\d,]+/);
-      if (priceMatch) {
-        // Format with .00 to match your CSV format
-        return priceMatch[0] + ".00";
-      }
-      return "N/A";
-    } catch (e) {
+      const price = await this.page.evaluate(() => {
+        // Try multiple selectors for price
+        const selectors = [
+          '[data-testid="listing-price"]',
+          ".listing-price",
+          ".property-price",
+          ".price-display",
+          ".current-price",
+        ];
+
+        for (const selector of selectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent) {
+            const priceText = element.textContent.trim();
+            if (priceText.includes("$")) {
+              return priceText;
+            }
+          }
+        }
+
+        // Fallback: look for price patterns
+        const bodyText = document.body.textContent || "";
+        const priceMatch = bodyText.match(/\$[\d,]+(?:\.\d{2})?/g);
+        if (priceMatch && priceMatch.length > 0) {
+          // Return the largest price (likely the listing price)
+          const prices = priceMatch.map((p) =>
+            parseFloat(p.replace(/[$,]/g, ""))
+          );
+          const maxPrice = Math.max(...prices);
+          return `$${maxPrice.toLocaleString()}.00`;
+        }
+
+        return "N/A";
+      });
+
+      return price || "N/A";
+    } catch (error) {
+      console.log("⚠️ Error extracting price:", error);
       return "N/A";
     }
   }
 
   private async extractLatitude(): Promise<string> {
+    if (!this.page) return "N/A";
+
     try {
-      // Get coordinates from the directions button (handle URL encoding)
-      const directionsHref = await this.page?.getAttribute(
-        "#listingDirectionsBtn",
-        "href"
-      );
-      if (directionsHref) {
-        // Decode URL and extract latitude
-        const decodedHref = decodeURIComponent(directionsHref);
-        const coordMatch = decodedHref.match(/destination=([^,]+),/);
-        return coordMatch ? coordMatch[1] : "N/A";
-      }
-      return "N/A";
-    } catch (e) {
+      const latitude = await this.page.evaluate(() => {
+        // Try to find latitude in various places
+        const searchAreas = [
+          document.body.textContent || "",
+          JSON.stringify(window),
+        ];
+
+        for (const area of searchAreas) {
+          // Look for latitude patterns
+          const latMatch = area.match(/latitude['":\s]*(-?\d+\.\d+)/i);
+          if (latMatch) {
+            return latMatch[1];
+          }
+
+          // Look for coordinate patterns
+          const coordMatch = area.match(/(-?\d{2}\.\d{6,})/g);
+          if (coordMatch && coordMatch.length >= 2) {
+            // First coordinate is typically latitude
+            return coordMatch[0];
+          }
+        }
+
+        return "N/A";
+      });
+
+      return latitude || "N/A";
+    } catch (error) {
+      console.log("⚠️ Error extracting latitude:", error);
       return "N/A";
     }
   }
 
   private async extractLongitude(): Promise<string> {
+    if (!this.page) return "N/A";
+
     try {
-      // Get coordinates from the directions button (handle URL encoding)
-      const directionsHref = await this.page?.getAttribute(
-        "#listingDirectionsBtn",
-        "href"
-      );
-      if (directionsHref) {
-        // Decode URL and extract longitude
-        const decodedHref = decodeURIComponent(directionsHref);
-        const coordMatch = decodedHref.match(/destination=[^,]+,([^&]+)/);
-        return coordMatch ? coordMatch[1] : "N/A";
-      }
-      return "N/A";
-    } catch (e) {
+      const longitude = await this.page.evaluate(() => {
+        // Try to find longitude in various places
+        const searchAreas = [
+          document.body.textContent || "",
+          JSON.stringify(window),
+        ];
+
+        for (const area of searchAreas) {
+          // Look for longitude patterns
+          const lngMatch = area.match(/longitude['":\s]*(-?\d+\.\d+)/i);
+          if (lngMatch) {
+            return lngMatch[1];
+          }
+
+          // Look for coordinate patterns
+          const coordMatch = area.match(/(-?\d{2}\.\d{6,})/g);
+          if (coordMatch && coordMatch.length >= 2) {
+            // Second coordinate is typically longitude
+            return coordMatch[1];
+          }
+        }
+
+        return "N/A";
+      });
+
+      return longitude || "N/A";
+    } catch (error) {
+      console.log("⚠️ Error extracting longitude:", error);
       return "N/A";
     }
   }
 
-  async close(): Promise<void> {
+  private async waitForElementReady(
+    selector: string,
+    timeout: number = BrowserConfig.ELEMENT_WAIT_TIMEOUT
+  ): Promise<boolean> {
+    if (!this.page) return false;
+
     try {
-      if (this.page) {
-        await this.page.close();
-        this.page = null;
-      }
-
-      if (this.context) {
-        await this.context.close();
-        this.context = null;
-      }
-
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
-        console.log("✅ Browser closed successfully");
-      }
+      console.log(`🔍 Waiting for element: ${selector}`);
+      await this.page.waitForSelector(selector, { timeout });
+      return true;
     } catch (error) {
-      console.error("❌ Error closing browser:", error);
+      console.log(`⚠️ Element ${selector} not ready: ${error}`);
+      return false;
+    }
+  }
+
+  private async clickElementSafely(
+    selector: string,
+    elementName: string = "element"
+  ): Promise<boolean> {
+    if (!this.page) return false;
+
+    try {
+      console.log(`🖱️ Clicking ${elementName}...`);
+      await this.page.click(selector);
+      console.log(`✅ Successfully clicked ${elementName}`);
+      return true;
+    } catch (error) {
+      console.log(`⚠️ Failed to click ${elementName}: ${error}`);
+      return false;
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this.browser) {
+      console.log("✅ Browser closed successfully");
+      await this.browser.close();
     }
   }
 }

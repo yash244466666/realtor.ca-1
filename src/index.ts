@@ -14,12 +14,10 @@ async function main() {
   // Option 1: Use current config from config.ts
   const config = ScrapingConfig;
 
-  // Option 2: Use a preset (uncomment one of these)
-  // const config = ConfigPresets.FAST_TEST;    // Quick testing
+  // Option 2: Use a preset (uncomment one of these if needed)
   // const config = ConfigPresets.PRODUCTION;   // Production settings
-  // const config = ConfigPresets.DEBUG;        // Debug mode
 
-  // Option 3: Override specific settings
+  // Option 3: Override specific settings (example)
   // const config = {
   //   ...ScrapingConfig,
   //   MAX_PAGES: 5,
@@ -39,11 +37,13 @@ async function main() {
   // All timing and scraping parameters can be easily adjusted in config.ts
   // and saving results in both JSON and CSV formats
 
-  // Display header
+  // Display header with execution timestamp
+  const startTime = new Date();
   console.log("\n=======================================");
   console.log("🏠 Realtor.ca Property Scraper - Configurable Version");
+  console.log(`⏰ Started at: ${startTime.toISOString()}`);
   console.log("=======================================");
-  console.log(`⚙️  Configuration:`);
+  console.log(`⚙️  Configuration Summary:`);
   console.log(`   🎯 Max Properties: ${ITEMS_TO_SCRAPE}`);
   console.log(`   📄 Max Pages: ${MAX_PAGES}`);
   console.log(
@@ -56,7 +56,7 @@ async function main() {
   console.log(
     `   ⏱️  Property Delay: ${config.PROPERTY_SCRAPING_DELAY / 1000}s`
   );
-  console.log(`   📍 URL: ${PAGE}`);
+  console.log(`   📍 Target URL: ${PAGE}`);
   console.log("=======================================\n");
 
   try {
@@ -66,12 +66,15 @@ async function main() {
       // Choose memory mode for dynamic updates
       if (MEMORY_MODE === "ultra") {
         // 🚀 ULTRA MEMORY EFFICIENT: No data kept in memory
+        console.log("🚀 Execution Mode: ULTRA Memory-Efficient Scraping");
         console.log(
-          "🚀 Starting ULTRA memory-efficient scraping with direct streaming..."
+          "📋 Process: Real-time data streaming with zero memory accumulation"
         );
         console.log(
-          "🧠 Features: Zero memory accumulation + Real-time Excel updates"
+          "📁 Output: Direct Excel file updates (daily + master files)"
         );
+        console.log("🧠 Memory Usage: Minimal (data not stored in RAM)");
+        console.log("⚡ Performance: Optimized for large datasets\n");
 
         const ultraResult = await scrapeFromListingsPageUltraMemoryEfficient(
           PAGE,
@@ -80,21 +83,32 @@ async function main() {
           MAX_PAGES
         );
 
-        console.log(
-          `\n✅ ULTRA mode completed: ${ultraResult.totalProcessed} properties processed`
-        );
-        console.log(
-          `📊 Files: ${ultraResult.dailyFile}, ${ultraResult.masterFile}`
-        );
+        const endTime = new Date();
+        const duration = endTime.getTime() - startTime.getTime();
+
+        console.log("\n=== ULTRA MODE EXECUTION SUMMARY ===");
+        console.log(`✅ Status: Completed successfully`);
+        console.log(`📊 Properties Processed: ${ultraResult.totalProcessed}`);
+        console.log(`� Daily File: ${ultraResult.dailyFile}`);
+        console.log(`📁 Master File: ${ultraResult.masterFile}`);
+        console.log(`⏰ Start Time: ${startTime.toISOString()}`);
+        console.log(`⏰ End Time: ${endTime.toISOString()}`);
+        console.log(`⏱️  Total Duration: ${Math.round(duration / 1000)}s`);
+        console.log("🎯 All data has been saved to Excel files");
         return; // No results to save since everything was streamed
       } else {
         // 🚀 EFFICIENT: Use temp files + limited memory
         console.log(
-          "🚀 Starting memory-efficient scraping with dynamic Excel updates..."
+          "🚀 Execution Mode: Memory-Efficient Scraping with Dynamic Updates"
+        );
+        console.log("📋 Process: Temp file streaming + dynamic Excel updates");
+        console.log(
+          "📁 Output: Daily/Master file system with real-time updates"
         );
         console.log(
-          "🧠 Features: Temp file streaming + Dynamic file updates + Daily/Master file system"
+          "🧠 Memory Usage: Controlled (uses temporary file buffers)"
         );
+        console.log("⚡ Performance: Balanced memory usage and speed\n");
 
         results = await scrapeFromListingsPageWithDynamicUpdates(
           PAGE,
@@ -105,8 +119,15 @@ async function main() {
       }
     } else if (USE_PAGINATION) {
       // Standard pagination (keeps all data in memory)
-      console.log("🚀 Starting standard scraping with pagination...");
-      console.log("⚠️  WARNING: Standard mode keeps all data in memory");
+      console.log("🚀 Execution Mode: Standard Pagination Scraping");
+      console.log(
+        "📋 Process: Traditional pagination with full data retention"
+      );
+      console.log(
+        "⚠️  Memory Warning: All scraped data kept in RAM until completion"
+      );
+      console.log("🧠 Memory Usage: High (entire dataset stored in memory)");
+      console.log("⚡ Performance: Fast but memory-intensive\n");
 
       results = await scrapeFromListingsPageWithPagination(
         PAGE,
@@ -116,7 +137,10 @@ async function main() {
       );
     } else {
       // Single page scraping (original method)
-      console.log("🚀 Starting single page scraping...");
+      console.log("🚀 Execution Mode: Single Page Scraping");
+      console.log("📋 Process: Limited to first page only (legacy mode)");
+      console.log("🧠 Memory Usage: Low (single page data only)");
+      console.log("⚡ Performance: Fast but limited scope\n");
 
       results = await scrapeFromListingsPage(
         PAGE,
@@ -126,6 +150,13 @@ async function main() {
     }
 
     if (results.length > 0) {
+      // Calculate execution metrics
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      const propertiesPerSecond = (results.length / (duration / 1000)).toFixed(
+        2
+      );
+
       // Save results with timestamp
       const timestamp = generateTimestamp();
       const jsonFilename = `listings-scrape-${timestamp}.json`;
@@ -134,15 +165,37 @@ async function main() {
       saveToJSON(results, jsonFilename);
       saveToCSV(results, csvFilename);
 
-      console.log("\n=== FINAL RESULTS SUMMARY ===");
-      console.table(results);
-      console.log(`\n📊 Total properties scraped: ${results.length}`);
-      console.log(`💾 Results saved to: ${jsonFilename} and ${csvFilename}`);
+      console.log("\n=== EXECUTION SUMMARY ===");
+      console.log(`✅ Status: Scraping completed successfully`);
+      console.log(`📊 Properties Scraped: ${results.length}`);
+      console.log(`⏰ Start Time: ${startTime.toISOString()}`);
+      console.log(`⏰ End Time: ${endTime.toISOString()}`);
+      console.log(`⏱️  Total Duration: ${Math.round(duration / 1000)}s`);
+      console.log(`⚡ Average Speed: ${propertiesPerSecond} properties/second`);
+      console.log(`💾 JSON Output: ${jsonFilename}`);
+      console.log(`💾 CSV Output: ${csvFilename}`);
+
+      console.log("\n=== SAMPLE DATA PREVIEW ===");
+      console.table(results.slice(0, 3)); // Show first 3 properties as preview
     } else {
-      console.log("❌ No properties were scraped");
+      console.log("\n=== EXECUTION SUMMARY ===");
+      console.log("❌ Status: No properties were scraped");
+      console.log(
+        "💡 Suggestion: Check if the target URL is valid and contains listings"
+      );
     }
   } catch (error) {
-    console.error("❌ Error during automated scraping:", error);
+    const endTime = new Date();
+    const duration = endTime.getTime() - startTime.getTime();
+
+    console.log("\n=== EXECUTION FAILED ===");
+    console.log("❌ Status: Scraping failed due to error");
+    console.log(`⏰ Failed at: ${endTime.toISOString()}`);
+    console.log(`⏱️  Runtime before failure: ${Math.round(duration / 1000)}s`);
+    console.error("🐛 Error Details:", error);
+    console.log(
+      "💡 Suggestion: Check network connection, target URL, or configuration settings"
+    );
   }
 
   return;

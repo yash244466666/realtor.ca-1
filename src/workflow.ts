@@ -20,33 +20,87 @@ export async function scrapeFromListingsPage(
   const results: PropertyData[] = [];
 
   try {
-    await scraper.initialize(headless);
+    await scraper.initialize();
 
-    // First, extract URLs from the listings page
-    console.log("🔍 Step 1: Extracting property URLs from listings page...");
-    const propertyUrls = await scraper.scrapeListingUrls(listingPageUrl);
+    // First, extract URLs from the listings page using API
+    console.log("🔍 Step 1: API URL Extraction Process");
+    console.log("📡 Connecting to realtor.ca API to extract property URLs...");
+    const urlExtractionStart = Date.now();
+
+    const propertyUrls = await scraper.extractPropertyUrls(1); // Just 1 page for single page scraping
+
+    const urlExtractionTime = Date.now() - urlExtractionStart;
+    console.log(
+      `✅ URL Extraction completed in ${Math.round(urlExtractionTime / 1000)}s`
+    );
+    console.log(`📊 Found ${propertyUrls.length} property URLs`);
 
     if (propertyUrls.length === 0) {
       console.log("❌ No property URLs found on the listings page");
+      console.log(
+        "💡 This could indicate: Invalid URL, no listings, or network issues"
+      );
       return results;
     }
 
     // Limit the number of properties to scrape
     const urlsToScrape = propertyUrls.slice(0, maxProperties);
-    console.log(`📋 Step 2: Scraping ${urlsToScrape.length} properties...`);
+    console.log(`\n� Step 2: Property Data Scraping Process`);
+    console.log(
+      `📋 Processing ${urlsToScrape.length} properties (limited from ${propertyUrls.length} available)`
+    );
+    console.log(
+      `⏱️  Estimated time: ~${Math.round(
+        (urlsToScrape.length * ScrapingConfig.PROPERTY_SCRAPING_DELAY) /
+          1000 /
+          60
+      )} minutes`
+    );
 
     // Scrape each property
+    const scrapingStartTime = Date.now();
     for (let i = 0; i < urlsToScrape.length; i++) {
+      const currentTime = new Date().toISOString().split("T")[1].split(".")[0];
       console.log(
-        `\n📍 Processing ${i + 1}/${urlsToScrape.length}: ${urlsToScrape[i]}`
+        `\n[${currentTime}] 📍 Processing ${i + 1}/${urlsToScrape.length}: ${
+          urlsToScrape[i]
+        }`
       );
+
       try {
+        const propertyStart = Date.now();
         const propertyData = await scraper.scrapeProperty(urlsToScrape[i]);
+        const propertyTime = Date.now() - propertyStart;
+
         results.push(propertyData);
 
-        // Log the individual property data
-        console.log(`\n=== PROPERTY ${i + 1} DATA ===`);
-        console.table(propertyData);
+        // Log the individual property data with timing
+        console.log(
+          `✅ Property ${i + 1} scraped successfully in ${Math.round(
+            propertyTime / 1000
+          )}s`
+        );
+        console.log(`📊 Address: ${propertyData.ADDRESS || "N/A"}`);
+        console.log(`💰 Price: ${propertyData.PRICE || "N/A"}`);
+        console.log(`�️ City: ${propertyData.CITY || "N/A"}`);
+        console.log(
+          `📍 Location: ${
+            propertyData.LATITUDE && propertyData.LONGITUDE
+              ? `${propertyData.LATITUDE}, ${propertyData.LONGITUDE}`
+              : "N/A"
+          }`
+        );
+
+        const remaining = urlsToScrape.length - (i + 1);
+        if (remaining > 0) {
+          const avgTimePerProperty = (Date.now() - scrapingStartTime) / (i + 1);
+          const estimatedTimeLeft = Math.round(
+            (remaining * avgTimePerProperty) / 1000 / 60
+          );
+          console.log(
+            `⏳ Estimated time remaining: ${estimatedTimeLeft} minutes`
+          );
+        }
 
         // Add delay between requests to be respectful
         if (i < urlsToScrape.length - 1) {
@@ -96,14 +150,11 @@ export async function scrapeFromListingsPageWithPagination(
   const results: PropertyData[] = [];
 
   try {
-    await scraper.initialize(headless);
+    await scraper.initialize();
 
-    // Extract URLs from multiple pages using pagination
+    // Extract URLs from multiple pages using the API approach
     console.log("🔍 Step 1: Extracting property URLs with pagination...");
-    const propertyUrls = await scraper.scrapeListingUrlsWithPagination(
-      listingPageUrl,
-      maxPages
-    );
+    const propertyUrls = await scraper.extractPropertyUrls(maxPages);
 
     if (propertyUrls.length === 0) {
       console.log("❌ No property URLs found on the listings pages");
@@ -179,7 +230,7 @@ export async function scrapeFromListingsPageWithDynamicUpdates(
   let propertiesProcessed = 0;
 
   try {
-    await scraper.initialize(headless);
+    await scraper.initialize();
 
     // Initialize dynamic Excel files (daily + master)
     await initializeDynamicExcel();
@@ -190,10 +241,7 @@ export async function scrapeFromListingsPageWithDynamicUpdates(
 
     // Extract URLs with pagination
     console.log("🔍 Step 1: Extracting property URLs with pagination...");
-    const propertyUrls = await scraper.scrapeListingUrlsWithPagination(
-      listingPageUrl,
-      maxPages
-    );
+    const propertyUrls = await scraper.extractPropertyUrls(maxPages);
 
     if (propertyUrls.length === 0) {
       console.log("❌ No property URLs found on the listings pages");
@@ -301,7 +349,7 @@ export async function scrapeFromListingsPageUltraMemoryEfficient(
   let propertiesProcessed = 0;
 
   try {
-    await scraper.initialize(headless);
+    await scraper.initialize();
 
     // Initialize dynamic Excel files (daily + master)
     await initializeDynamicExcel();
@@ -312,10 +360,7 @@ export async function scrapeFromListingsPageUltraMemoryEfficient(
 
     // Extract URLs with pagination
     console.log("🔍 Step 1: Extracting property URLs with pagination...");
-    const propertyUrls = await scraper.scrapeListingUrlsWithPagination(
-      listingPageUrl,
-      maxPages
-    );
+    const propertyUrls = await scraper.extractPropertyUrls(maxPages);
 
     if (propertyUrls.length === 0) {
       console.log("❌ No property URLs found on the listings pages");

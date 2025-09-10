@@ -1,123 +1,199 @@
 // Configuration file for Realtor.ca Scraper
 // All timing and scraping parameters can be easily adjusted here
 
+// ============ TIMEOUT PRESETS ============
+export type TimeoutMode = "fast" | "normal" | "slow" | "debug";
+
+export const TIMEOUT_PRESETS = {
+  fast: {
+    INITIAL_PAGE_LOAD_DELAY: 3000, // 3 seconds
+    COOKIE_BANNER_DELAY: 1000, // 1 second
+    PROPERTY_SCRAPING_DELAY: 1000, // 1 second
+    PAGINATION_CLICK_DELAY: 3000, // 3 seconds
+    PAGINATION_SCROLL_DELAY: 1000, // 1 second
+    PAGE_STABILIZATION_DELAY: 2000, // 2 seconds
+    NETWORK_IDLE_DELAY: 1000, // 1 second
+    NAVIGATION_TIMEOUT: 30000, // 30 seconds
+    ELEMENT_WAIT_TIMEOUT: 10000, // 10 seconds
+    PAGE_LOAD_WAIT_TIMEOUT: 15000, // 15 seconds
+    NAVIGATION_RETRY_DELAY: 2000, // 2 seconds
+  },
+  normal: {
+    INITIAL_PAGE_LOAD_DELAY: 5000, // 5 seconds
+    COOKIE_BANNER_DELAY: 2000, // 2 seconds
+    PROPERTY_SCRAPING_DELAY: 2000, // 2 seconds
+    PAGINATION_CLICK_DELAY: 5000, // 5 seconds
+    PAGINATION_SCROLL_DELAY: 1500, // 1.5 seconds
+    PAGE_STABILIZATION_DELAY: 3000, // 3 seconds
+    NETWORK_IDLE_DELAY: 2000, // 2 seconds
+    NAVIGATION_TIMEOUT: 45000, // 45 seconds
+    ELEMENT_WAIT_TIMEOUT: 15000, // 15 seconds
+    PAGE_LOAD_WAIT_TIMEOUT: 25000, // 25 seconds
+    NAVIGATION_RETRY_DELAY: 3000, // 3 seconds
+  },
+  slow: {
+    INITIAL_PAGE_LOAD_DELAY: 10000, // 10 seconds
+    COOKIE_BANNER_DELAY: 3000, // 3 seconds
+    PROPERTY_SCRAPING_DELAY: 5000, // 5 seconds
+    PAGINATION_CLICK_DELAY: 8000, // 8 seconds
+    PAGINATION_SCROLL_DELAY: 2000, // 2 seconds
+    PAGE_STABILIZATION_DELAY: 5000, // 5 seconds
+    NETWORK_IDLE_DELAY: 3000, // 3 seconds
+    NAVIGATION_TIMEOUT: 60000, // 60 seconds
+    ELEMENT_WAIT_TIMEOUT: 20000, // 20 seconds
+    PAGE_LOAD_WAIT_TIMEOUT: 35000, // 35 seconds
+    NAVIGATION_RETRY_DELAY: 5000, // 5 seconds
+  },
+  debug: {
+    INITIAL_PAGE_LOAD_DELAY: 15000, // 15 seconds
+    COOKIE_BANNER_DELAY: 5000, // 5 seconds
+    PROPERTY_SCRAPING_DELAY: 8000, // 8 seconds
+    PAGINATION_CLICK_DELAY: 12000, // 12 seconds
+    PAGINATION_SCROLL_DELAY: 3000, // 3 seconds
+    PAGE_STABILIZATION_DELAY: 8000, // 8 seconds
+    NETWORK_IDLE_DELAY: 5000, // 5 seconds
+    NAVIGATION_TIMEOUT: 90000, // 90 seconds
+    ELEMENT_WAIT_TIMEOUT: 30000, // 30 seconds
+    PAGE_LOAD_WAIT_TIMEOUT: 60000, // 60 seconds
+    NAVIGATION_RETRY_DELAY: 8000, // 8 seconds
+  },
+};
+
+// ============ CURRENT TIMEOUT MODE ============
+// Change this to switch between timeout presets: "fast" | "normal" | "slow" | "debug"
+export const CURRENT_TIMEOUT_MODE: TimeoutMode = "fast";
+
+// Get current timeout settings based on mode
+const getCurrentTimeouts = () => TIMEOUT_PRESETS[CURRENT_TIMEOUT_MODE];
+
 export const ScrapingConfig = {
-  // ============ PAGINATION SETTINGS ============
-  /** Maximum number of pages to scrape through */
+  // Default listing URL to scrape (Page 1 uses different URL structure)
+  // DEFAULT_LISTING_URL: "https://www.realtor.ca/on/mississauga/real-estate",
+  // DEFAULT_LISTING_URL: "https://www.realtor.ca/on/toronto/real-estate",
+  DEFAULT_LISTING_URL: "https://www.realtor.ca/on/markham/real-estate",
+  // DEFAULT_LISTING_URL: "https://www.realtor.ca/on/ottawa/real-estate",
+
+  // Paginated URL template for pages 2+ (discovered from manual navigation)
+  PAGINATED_URL_TEMPLATE:
+    "https://www.realtor.ca/map#view=list&CurrentPage={PAGE}&Sort=6-D&GeoIds=g30_dpz89rm7&GeoName=Toronto%2C%20ON&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=1&Currency=CAD",
+
+  // Maximum number of pages to scrape
   MAX_PAGES: 100,
 
-  /** Maximum number of properties to scrape in total */
+  // Maximum number of properties to scrape
   MAX_PROPERTIES: 500,
 
-  /** Enable or disable pagination (true = multi-page, false = single page only) */
-  USE_PAGINATION: true,
+  // Default limit for single page scraping
+  DEFAULT_SINGLE_PAGE_LIMIT: 50,
 
-  /** Enable dynamic Excel updates and dual file system (daily + master files) */
-  USE_DYNAMIC_UPDATES: true,
-
-  /** Memory efficiency mode: 'standard' | 'efficient' | 'ultra' */
-  MEMORY_MODE: "efficient" as "standard" | "efficient" | "ultra",
-
-  /** Maximum properties to keep in memory before flushing to temp files (efficient mode) */
-  MAX_PROPERTIES_IN_MEMORY: 50,
-
-  // ============ TIMING SETTINGS ============
-  /** Initial page load wait time (milliseconds) */
-  INITIAL_PAGE_LOAD_DELAY: 1000 * 30, // 30 seconds (reduced from 120)
-
-  /** Wait time after dismissing cookie banner (milliseconds) */
-  COOKIE_BANNER_DELAY: 1000 * 3, // 3 seconds
-
-  /** Delay between individual property scraping requests (milliseconds) */
-  PROPERTY_SCRAPING_DELAY: 1000 * 2, // 2 seconds
-
-  /** Wait time after clicking pagination button (milliseconds) */
-  PAGINATION_CLICK_DELAY: 1000 * 10, // 10 seconds (increased for better loading)
-
-  /** Delay before clicking pagination button (for scroll to complete) */
-  PAGINATION_SCROLL_DELAY: 1000 * 2, // 2 seconds
-
-  /** Wait time for page content to stabilize after navigation */
-  PAGE_STABILIZATION_DELAY: 1000 * 5, // 5 seconds
-
-  /** Wait time for network requests to complete */
-  NETWORK_IDLE_DELAY: 1000 * 3, // 3 seconds
-
-  // ============ BROWSER SETTINGS ============
-  /** Run browser in headless mode (true = hidden, false = visible) */
-  HEADLESS_MODE: false,
-
-  /** Browser navigation timeout (milliseconds) */
-  NAVIGATION_TIMEOUT: 1000 * 90, // 90 seconds
-
-  /** Cookie banner dismiss timeout (milliseconds) */
-  COOKIE_BANNER_TIMEOUT: 1000 * 10, // 10 seconds
-
-  /** Browser slow motion delay for debugging (milliseconds) */
-  BROWSER_SLOW_MO: 1000 * 0, // 0 seconds
-
-  /** Page load strategy: 'domcontentloaded' | 'load' | 'networkidle' */
-  PAGE_LOAD_STRATEGY: "networkidle" as
-    | "domcontentloaded"
-    | "load"
-    | "networkidle",
-
-  /** Maximum wait time for elements to become available (milliseconds) */
-  ELEMENT_WAIT_TIMEOUT: 1000 * 30, // 30 seconds
-
-  /** Maximum wait time for page to load completely (milliseconds) */
-  PAGE_LOAD_WAIT_TIMEOUT: 1000 * 60, // 60 seconds
-
-  /** Enable browser cache and persistent context */
-  ENABLE_CACHE: true,
-
-  /** Persistent context directory for cache and cookies */
-  USER_DATA_DIR: "./browser-data",
-
-  /** Maximum retries for failed navigation attempts */
-  NAVIGATION_RETRIES: 3,
-
-  /** Wait time between navigation retries (milliseconds) */
-  NAVIGATION_RETRY_DELAY: 1000 * 5, // 5 seconds
-
-  // ============ SCRAPING LIMITS ============
-  /** Default number of properties for single page scraping */
-  DEFAULT_SINGLE_PAGE_LIMIT: 12,
-
-  /** Maximum properties per page (realtor.ca typically shows 12) */
+  // Properties per page (expected)
   PROPERTIES_PER_PAGE: 12,
 
-  // ============ DEFAULT URLs ============
-  /** Default listing page URL */
-  DEFAULT_LISTING_URL: "https://www.realtor.ca/on/toronto/real-estate",
-
-  /** Mississauga listing URL */
-  // MISSISSAUGA_LISTING_URL: "https://www.realtor.ca/on/mississauga/real-estate",
-
-  // ============ VIEWPORT SETTINGS ============
-  /** Browser viewport width */
+  // Browser configuration
+  HEADLESS_MODE: false, // Set to true for production
+  // Browser viewport settings - Fullscreen for better content loading
   VIEWPORT_WIDTH: 1920,
-
-  /** Browser viewport height */
   VIEWPORT_HEIGHT: 1080,
+  BROWSER_SLOW_MO: 100, // Slow down for debugging
+  ENABLE_CACHE: true,
+  USER_DATA_DIR: "./browser-data",
+  PAGE_LOAD_STRATEGY: "domcontentloaded" as const,
 
-  // ============ ERROR HANDLING ============
-  /** Maximum retries for failed property scraping */
-  MAX_RETRIES: 3,
+  // Timeouts (will be overridden by dynamic timeout functions)
+  NAVIGATION_TIMEOUT: 30000,
+  COOKIE_BANNER_TIMEOUT: 5000,
+  ELEMENT_WAIT_TIMEOUT: 10000,
+  PAGE_LOAD_WAIT_TIMEOUT: 15000,
 
-  /** Retry delay when property scraping fails (milliseconds) */
-  RETRY_DELAY: 1000 * 10, // 10 seconds
+  // Delays (will be overridden by dynamic timeout functions)
+  INITIAL_PAGE_LOAD_DELAY: 3000,
+  COOKIE_BANNER_DELAY: 1000,
+  PROPERTY_SCRAPING_DELAY: 1000,
+  PAGINATION_CLICK_DELAY: 3000,
+  PAGINATION_SCROLL_DELAY: 1000,
+  PAGE_STABILIZATION_DELAY: 2000,
+  NETWORK_IDLE_DELAY: 1000,
+  NAVIGATION_RETRY_DELAY: 2000,
+
+  // Retry configuration
+  NAVIGATION_RETRIES: 3,
+
+  // Property selectors
+  PROPERTY_LINK_SELECTOR: 'a[href*="/real-estate/"]',
+
+  // Pagination selectors
+  PAGINATION_CONTAINER_SELECTOR: ".ResultsPaginationCon",
+  NEXT_PAGE_BUTTON_SELECTOR: ".lnkNextResultsPage",
+
+  // Output file names
+  JSON_OUTPUT_FILENAME: "listings-scrape",
+  CSV_OUTPUT_FILENAME: "listings-scrape",
+
+  // Enable/disable pagination
+  USE_PAGINATION: true,
+
+  // Memory and performance settings
+  USE_DYNAMIC_UPDATES: true,
+  MEMORY_MODE: "efficient",
 };
+
+// ============ HELPER FUNCTIONS ============
+/**
+ * Quick function to change timeout mode
+ */
+export function setTimeoutMode(mode: TimeoutMode): void {
+  console.log(`🕒 Switching to ${mode.toUpperCase()} timeout mode`);
+  console.log(
+    `   Initial page load: ${
+      TIMEOUT_PRESETS[mode].INITIAL_PAGE_LOAD_DELAY / 1000
+    }s`
+  );
+  console.log(
+    `   Property scraping: ${
+      TIMEOUT_PRESETS[mode].PROPERTY_SCRAPING_DELAY / 1000
+    }s`
+  );
+  console.log(
+    `   Navigation timeout: ${TIMEOUT_PRESETS[mode].NAVIGATION_TIMEOUT / 1000}s`
+  );
+
+  // Update the current mode (requires restart to take effect)
+  (global as any).CURRENT_TIMEOUT_MODE = mode;
+}
+
+/**
+ * Get current timeout settings
+ */
+export function getCurrentTimeoutSettings() {
+  return {
+    mode: CURRENT_TIMEOUT_MODE,
+    settings: getCurrentTimeouts(),
+  };
+}
 
 // Export individual categories for easier imports
 export const TimingConfig = {
-  INITIAL_PAGE_LOAD_DELAY: ScrapingConfig.INITIAL_PAGE_LOAD_DELAY,
-  COOKIE_BANNER_DELAY: ScrapingConfig.COOKIE_BANNER_DELAY,
-  PROPERTY_SCRAPING_DELAY: ScrapingConfig.PROPERTY_SCRAPING_DELAY,
-  PAGINATION_CLICK_DELAY: ScrapingConfig.PAGINATION_CLICK_DELAY,
-  PAGINATION_SCROLL_DELAY: ScrapingConfig.PAGINATION_SCROLL_DELAY,
-  PAGE_STABILIZATION_DELAY: ScrapingConfig.PAGE_STABILIZATION_DELAY,
-  NETWORK_IDLE_DELAY: ScrapingConfig.NETWORK_IDLE_DELAY,
+  get INITIAL_PAGE_LOAD_DELAY() {
+    return ScrapingConfig.INITIAL_PAGE_LOAD_DELAY;
+  },
+  get COOKIE_BANNER_DELAY() {
+    return ScrapingConfig.COOKIE_BANNER_DELAY;
+  },
+  get PROPERTY_SCRAPING_DELAY() {
+    return ScrapingConfig.PROPERTY_SCRAPING_DELAY;
+  },
+  get PAGINATION_CLICK_DELAY() {
+    return ScrapingConfig.PAGINATION_CLICK_DELAY;
+  },
+  get PAGINATION_SCROLL_DELAY() {
+    return ScrapingConfig.PAGINATION_SCROLL_DELAY;
+  },
+  get PAGE_STABILIZATION_DELAY() {
+    return ScrapingConfig.PAGE_STABILIZATION_DELAY;
+  },
+  get NETWORK_IDLE_DELAY() {
+    return ScrapingConfig.NETWORK_IDLE_DELAY;
+  },
 };
 
 export const PaginationConfig = {
@@ -129,18 +205,26 @@ export const PaginationConfig = {
 
 export const BrowserConfig = {
   HEADLESS_MODE: ScrapingConfig.HEADLESS_MODE,
-  NAVIGATION_TIMEOUT: ScrapingConfig.NAVIGATION_TIMEOUT,
+  get NAVIGATION_TIMEOUT() {
+    return ScrapingConfig.NAVIGATION_TIMEOUT;
+  },
   COOKIE_BANNER_TIMEOUT: ScrapingConfig.COOKIE_BANNER_TIMEOUT,
   BROWSER_SLOW_MO: ScrapingConfig.BROWSER_SLOW_MO,
   VIEWPORT_WIDTH: ScrapingConfig.VIEWPORT_WIDTH,
   VIEWPORT_HEIGHT: ScrapingConfig.VIEWPORT_HEIGHT,
   PAGE_LOAD_STRATEGY: ScrapingConfig.PAGE_LOAD_STRATEGY,
-  ELEMENT_WAIT_TIMEOUT: ScrapingConfig.ELEMENT_WAIT_TIMEOUT,
-  PAGE_LOAD_WAIT_TIMEOUT: ScrapingConfig.PAGE_LOAD_WAIT_TIMEOUT,
+  get ELEMENT_WAIT_TIMEOUT() {
+    return ScrapingConfig.ELEMENT_WAIT_TIMEOUT;
+  },
+  get PAGE_LOAD_WAIT_TIMEOUT() {
+    return ScrapingConfig.PAGE_LOAD_WAIT_TIMEOUT;
+  },
   ENABLE_CACHE: ScrapingConfig.ENABLE_CACHE,
   USER_DATA_DIR: ScrapingConfig.USER_DATA_DIR,
   NAVIGATION_RETRIES: ScrapingConfig.NAVIGATION_RETRIES,
-  NAVIGATION_RETRY_DELAY: ScrapingConfig.NAVIGATION_RETRY_DELAY,
+  get NAVIGATION_RETRY_DELAY() {
+    return ScrapingConfig.NAVIGATION_RETRY_DELAY;
+  },
 };
 
 // Quick configuration presets
@@ -178,3 +262,22 @@ export const ConfigPresets = {
     BROWSER_SLOW_MO: 1000,
   },
 };
+
+// ============ TIMEOUT MODE EXAMPLES ============
+/*
+Usage Examples:
+
+1. For quick testing (change at top of file):
+   export const CURRENT_TIMEOUT_MODE: TimeoutMode = "fast";
+
+2. For stable production:
+   export const CURRENT_TIMEOUT_MODE: TimeoutMode = "normal";
+
+3. For slow/unreliable connections:
+   export const CURRENT_TIMEOUT_MODE: TimeoutMode = "slow";
+
+4. For debugging issues:
+   export const CURRENT_TIMEOUT_MODE: TimeoutMode = "debug";
+
+All timeouts will automatically adjust based on the selected mode!
+*/

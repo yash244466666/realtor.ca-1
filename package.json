@@ -1,22 +1,26 @@
 {
-  "name": "typescript-playground",
-  "version": "1.0.0",
-  "description": "LinkedIn JSON response adapter",
+  "name": "realtor-ca-scraper",
+  "version": "2.0.0",
+  "description": "Production-ready Realtor.ca property scraper with memory-efficient processing",
   "main": "src/index.ts",
   "scripts": {
     "start": "npx ts-node src/index.ts",
-    "start:listings": "npx ts-node src/index.ts listings",
-    "start:manual": "npx ts-node src/index.ts manual"
+    "build": "npx tsc",
+    "clean": "rm -rf dist/",
+    "help": "echo 'Available commands:\\n  npm start          - Run the property scraper\\n  npm run build      - Compile TypeScript to JavaScript\\n  npm run clean      - Clean compiled files\\n  npm run help       - Show this help message'"
   },
   "keywords": [
     "typescript",
-    "linkedin",
-    "json",
-    "adapter"
+    "realtor",
+    "scraper",
+    "property",
+    "real-estate",
+    "automation"
   ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/node": "^20.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0"
