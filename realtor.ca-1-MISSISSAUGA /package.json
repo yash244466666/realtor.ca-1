@@ -1,0 +1,35 @@
+{
+  "name": "realtor-ca-scraper",
+  "version": "2.0.0",
+  "description": "Production-ready Realtor.ca property scraper with memory-efficient processing",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "npx ts-node src/index.ts",
+    "build": "npx tsc",
+    "clean": "rm -rf dist/",
+    "help": "echo 'Available commands:\\n  npm start          - Run the property scraper\\n  npm run build      - Compile TypeScript to JavaScript\\n  npm run clean      - Clean compiled files\\n  npm run help       - Show this help message'"
+  },
+  "keywords": [
+    "typescript",
+    "realtor",
+    "scraper",
+    "property",
+    "real-estate",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@types/exceljs": "^0.5.3",
+    "@types/fs-extra": "^11.0.4",
+    "exceljs": "^4.4.0",
+    "fs-extra": "^11.3.1",
+    "playwright": "^1.55.0"
+  }
+}
