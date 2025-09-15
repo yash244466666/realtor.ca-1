@@ -72,10 +72,11 @@ export const ScrapingConfig = {
   DEFAULT_LISTING_URL: "https://www.realtor.ca/on/toronto/real-estate",
 
   // Maximum number of pages to scrape
-  MAX_PAGES: 10,
+  MAX_PAGES: 50,
+  START_PAGE: 1, // Start from page 1
 
   // Maximum number of properties to scrape
-  MAX_PROPERTIES: 50,
+  MAX_PROPERTIES: 600,
 
   // Default limit for single page scraping
   DEFAULT_SINGLE_PAGE_LIMIT: 50,
@@ -128,7 +129,7 @@ export const ScrapingConfig = {
 
   // Memory and performance settings
   USE_DYNAMIC_UPDATES: true,
-  MEMORY_MODE: "standard", // Options: "standard", "efficient", "ultra", "streaming", "ultra-streaming"
+  MEMORY_MODE: "ultra-streaming", // Options: "standard", "efficient", "ultra", "streaming", "ultra-streaming"
 };
 
 // ============ HELPER FUNCTIONS ============

@@ -909,7 +909,7 @@ export class RealtorCaScraper {
 
     // Step 3: Stream URLs page by page and process immediately
     for (
-      let page = 1;
+      let page = ScrapingConfig.START_PAGE;
       page <= maxPages && processedCount < maxProperties;
       page++
     ) {

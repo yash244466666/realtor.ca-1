@@ -49,7 +49,7 @@ export class CityGeoIdFinder {
       console.log("🌐 Loading city page for analysis...");
       await this.page!.goto(cityUrl, {
         waitUntil: "domcontentloaded",
-        timeout: 30000,
+        timeout: 60000 * 2, // 120 seconds timeout
       });
 
       // Wait for initial load
